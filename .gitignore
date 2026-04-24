@@ -1,0 +1,7 @@
+venv/
+.venv/
+*.czi
+*.tif
+*.tiff
+*:Zone*.Identifier
+*.Identifier

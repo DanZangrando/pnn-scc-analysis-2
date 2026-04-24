@@ -1,0 +1,20 @@
+{
+    "pixel_size_um": 0.8913225446428569,
+    "z_spacing_um": 5.889999999999999,
+    "channels": [
+        "ER\u03b1 (AF594)",
+        "WFA (AF488)",
+        "DAPI"
+    ],
+    "cellpose_diameter": 30.0,
+    "cellpose_flow_threshold": 0.4,
+    "cellpose_cellprob_threshold": 2.23,
+    "cellpose_filter_type": "CLAHE (Adaptativo Local)",
+    "er_cellpose_diameter": 30.0,
+    "er_cellpose_flow_threshold": 0.4,
+    "er_cellpose_cellprob_threshold": 0.0,
+    "er_cellpose_filter_type": "Ninguno",
+    "pnn_radius_um": 10.0,
+    "pnn_intensity_threshold": 4000000.0,
+    "pnn_exclusion_distance_um": 15.0
+}
