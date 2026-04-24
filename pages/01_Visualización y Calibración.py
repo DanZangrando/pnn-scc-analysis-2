@@ -162,8 +162,8 @@ st.session_state['z_spacing'] = z_space
 
 st.sidebar.divider()
 if st.sidebar.button("💾 Guardar Calibración Global"):
-    # Map raw CZI names to our standard names
-    standard_channels = ["ERα (AF594)", "WFA (AF488)", "DAPI"]
+    # Updated to 4 channels based on new project
+    standard_channels = ["AGR (AF488)", "DAPI", "WFA (AF647/FarRed)", "PV (AF546)"]
     
     config_data = {
         "pixel_size_um": calib,
@@ -184,33 +184,43 @@ st.sidebar.text(f"Resolución Total: {meta['width']} x {meta['height']}")
 
 st.subheader(f"Muestra: {selected_filename}")
 
-col1, col2, col3 = st.columns(3)
+# Create 4 columns for the 4 channels
+cols = st.columns(4)
 
-# Placeholders for channels based on filename/order
-# 0: ERa (AF594), 1: WFA (AF488), 2: DAPI
+# Updated channel_map for the new configuration
+# 0: AGR, 1: DAPI, 2: WFA, 3: PV
 channel_map = {
-    0: {"name": "ERα (AF594)", "color": "Red", "label": "ERα"},
-    1: {"name": "WFA (AF488)", "color": "Green", "label": "WFA"},
-    2: {"name": "DAPI", "color": "Blue", "label": "DAPI"}
+    0: {"name": "AGR (C1)", "color": "Magenta", "label": "AGR"},
+    1: {"name": "DAPI (C2)", "color": "Blue", "label": "DAPI"},
+    2: {"name": "WFA (C3)", "color": "Green", "label": "WFA"},
+    3: {"name": "PV (C4)", "color": "White", "label": "PV"}
 }
 
 previews = {}
 
 with st.spinner("Generando Proyecciones (MIP)..."):
-    for i in range(min(3, len(meta['channels']))):
+    for i in range(min(4, len(meta['channels']))):
         mip = get_mip_preview(selected_path, i)
         # Normalize for display
         disp = cv2.normalize(mip, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
         previews[i] = mip # Keep original for saving
         
-        target_col = [col1, col2, col3][i]
+        target_col = cols[i]
         with target_col:
             st.markdown(f"**{channel_map[i]['name']}**")
             # Create RGB for colored display
             rgb = np.zeros((disp.shape[0], disp.shape[1], 3), dtype=np.uint8)
-            if i == 0: rgb[:,:,0] = disp # Red
-            elif i == 1: rgb[:,:,1] = disp # Green
-            elif i == 2: rgb[:,:,2] = disp # Blue
+            if i == 0: # C1 - Magenta (R+B)
+                rgb[:,:,0] = disp
+                rgb[:,:,2] = disp
+            elif i == 1: # C2 - Blue
+                rgb[:,:,2] = disp
+            elif i == 2: # C3 - Green
+                rgb[:,:,1] = disp
+            elif i == 3: # C4 - White (R+G+B)
+                rgb[:,:,0] = disp
+                rgb[:,:,1] = disp
+                rgb[:,:,2] = disp
             st.image(rgb, width='stretch')
 
 st.divider()
@@ -221,10 +231,10 @@ act_col1, act_col2 = st.columns(2)
 with act_col1:
     st.subheader("💾 Procesamiento")
     if st.button("Procesar Solo Esta Imagen (MIP)"):
-        with st.spinner("Procesando MIP a resolución completa (esto puede tardar)..."):
+        with st.spinner("Procesando MIP a resolución completa (4 canales)..."):
             final_planes = []
             try:
-                for i in range(3):
+                for i in range(4):
                     mip_full = get_mip_preview(selected_path, i, scale=1.0)
                     final_planes.append(mip_full)
                 
@@ -234,7 +244,7 @@ with act_col1:
                 
                 # Stack: (C, Y, X)
                 stack = np.stack(final_planes)
-                labels = ["ERα (AF594)", "WFA (AF488)", "DAPI"]
+                labels = ["AGR (AF488)", "DAPI", "WFA (AF647)", "PV (AF546)"]
                 imwrite(out_path, stack, imagej=True, metadata={'spacing': calib, 'unit': 'um', 'Axes': 'CYX', 'Labels': labels})
 
                 
@@ -251,10 +261,10 @@ with act_col1:
             for file in czi_files:
                 try:
                     p = os.path.join(RAW_DIR, file)
-                    planes = [get_mip_preview(p, i, scale=1.0) for i in range(3)]
+                    planes = [get_mip_preview(p, i, scale=1.0) for i in range(min(4, len(meta['channels'])))]
                     stack = np.stack(planes)
                     out_name = file.replace('.czi', '_MIP.tif')
-                    labels = ["ERα (AF594)", "WFA (AF488)", "DAPI"]
+                    labels = ["AGR (AF488)", "DAPI", "WFA (AF647)", "PV (AF546)"]
                     imwrite(os.path.join(PROCESSED_DIR, out_name), stack, imagej=True, metadata={'spacing': calib, 'unit': 'um', 'Axes': 'CYX', 'Labels': labels})
                     success_count += 1
                 except Exception as e:

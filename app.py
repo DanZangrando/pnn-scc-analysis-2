@@ -60,7 +60,7 @@ st.subheader("Análisis Automatizado de Redes Perineuronales e Interneuronas PV+
 st.markdown("""
 <div class="status-box">
 <h3>📋 Descripción del Proyecto</h3>
-Este proyecto busca automatizar el procesamiento de imágenes de <b>microscopía de fluorescencia nativa (.czi)</b> para cuantificar la densidad y morfología de las <b>Redes Perineuronales (PNNs)</b> y su asociación con la expresión de <b>ERα (Receptor de Estrógenos alfa)</b> y núcleos <b>DAPI</b> en la Corteza Somatosensorial (SSC). El flujo de trabajo incluye el procesamiento de Z-stacks de alta resolución y la validación experta mediante <b>QuPath</b>.
+Este proyecto busca automatizar el procesamiento de imágenes de <b>microscopía de fluorescencia nativa (.czi)</b> para cuantificar la densidad y morfología de las <b>Redes Perineuronales (PNNs)</b> y su asociación con las interneuronas <b>PV+ (Parvalbúmina)</b> y núcleos <b>DAPI</b> en la Corteza Somatosensorial (SSC). El flujo de trabajo incluye el procesamiento de Z-stacks de 4 canales y la validación experta mediante <b>QuPath</b>.
 </div>
 """, unsafe_allow_html=True)
 
@@ -69,25 +69,27 @@ col1, col2 = st.columns(2)
 with col1:
     st.markdown("### 🧠 Contexto Teórico")
     st.write("""
-    - **Redes Perineuronales (PNNs):** Son estructuras especializadas de la matriz extracelular que envuelven el soma y las dendritas proximales de ciertas neuronas. Son fundamentales para la regulación de la plasticidad sináptica y la estabilización de circuitos neuronales.
-    - **Interneuronas PV+:** Un subtipo de interneuronas GABAérgicas que expresan la proteína parvalbúmina. Son conocidas por su alta tasa de disparo y su papel crucial en la sincronización de ritmos corticales. En la corteza, la mayoría de las PNNs envuelven a estas células.
+    - **Redes Perineuronales (PNNs):** Estructuras de la matriz extracelular que envuelven neuronas específicas, regulando la plasticidad y protegiendo contra el estrés oxidativo.
+    - **Interneuronas PV+:** Neuronas GABAérgicas de disparo rápido (fast-spiking) que expresan la proteína parvalbúmina. Son el blanco principal de las PNNs en la corteza.
     """)
 
 with col2:
-    st.markdown("### 🔬 Marcadores Utilizados")
+    st.markdown("### 🔬 Marcadores y Canales")
     st.write("""
-    - **WFA (Wisteria Floribunda Agglutinin):** Una lectina que se une específicamente a los glicosaminoglicanos de las PNNs, permitiendo su visualización.
-    - **ERα (Estrogen Receptor alpha):** Un receptor nuclear que regula la expresión génica en respuesta a estrógenos, involucrado en procesos neuroprotectores y de plasticidad.
-    - **DAPI:** Colorante fluorescente que marca los núcleos celulares, permitiendo la segmentación de somas y la localización espacial de las neuronas.
+    - **C1: AF488 (AGR):** Marcador adicional de referencia.
+    - **C2: DAPI:** Marcador nuclear para la identificación y segmentación de somas celulares.
+    - **C3: WFA (AF647):** Lectina para la visualización de las Redes Perineuronales (PNN+).
+    - **C4: PV (AF546):** Anticuerpo contra Parvalbúmina para identificar interneuronas específicas.
     """)
 
 st.divider()
 
 st.markdown("### 🚀 Objetivos del Proyecto")
 st.write("""
-1. **Segmentación Precisa:** Utilizar *Cellpose* para identificar núcleos y somas de manera robusta.
-2. **Cuantificación Morfométrica:** Medir la intensidad de fluorescencia y la integridad de las PNNs.
-3. **Análisis de Asociación:** Evaluar qué proporción de células PV+ están rodeadas por PNNs y cómo varían estas poblaciones en diferentes condiciones experimentales.
+1. **Segmentación de Núcleos:** Identificación individual de células mediante DAPI.
+2. **Detección de PV+:** Clasificación de neuronas según su expresión de Parvalbúmina.
+3. **Análisis de PNNs:** Cuantificación de la intensidad y presencia de redes rodeando a las células PV+.
+4. **Relación Espacial:** Evaluación de la proporción de células PV envueltas por PNN en la SSC.
 """)
 
 st.divider()
@@ -103,11 +105,11 @@ if os.path.exists(raw_data_path):
         st.write(f"Se han detectado **{len(czi_files)}** archivos `.czi` nativos.")
         selected_file = st.selectbox("Selecciona una imagen nativa:", czi_files)
         
-        # Display basic file info (mock for now, will be real in Page 1)
+        # Display basic file info
         st.info(f"Archivo seleccionado: `{selected_file}`")
         st.markdown(f"""
         - **Formato:** Nativo Zeiss (.czi)
-        - **Canales potenciales:** WFA, ERα, DAPI
+        - **Configuración de Canales:** 4 Canales (AGR, DAPI, WFA, PV)
         - **Z-Stacks:** Multi-plano detectado
         """)
         

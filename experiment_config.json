@@ -1,20 +1,21 @@
 {
-    "pixel_size_um": 0.8913225446428569,
-    "z_spacing_um": 5.889999999999999,
+    "pixel_size_um": 0.65,
+    "z_spacing_um": 1.0,
     "channels": [
-        "ER\u03b1 (AF594)",
-        "WFA (AF488)",
-        "DAPI"
+        "AGR (AF488)",
+        "DAPI",
+        "WFA (AF647)",
+        "PV (AF546)"
     ],
+    "cellpose_filter_type": "CLAHE (Adaptativo Local)",
     "cellpose_diameter": 30.0,
     "cellpose_flow_threshold": 0.4,
-    "cellpose_cellprob_threshold": 2.23,
-    "cellpose_filter_type": "CLAHE (Adaptativo Local)",
-    "er_cellpose_diameter": 30.0,
-    "er_cellpose_flow_threshold": 0.4,
-    "er_cellpose_cellprob_threshold": 0.0,
-    "er_cellpose_filter_type": "Ninguno",
-    "pnn_radius_um": 10.0,
-    "pnn_intensity_threshold": 4000000.0,
+    "cellpose_cellprob_threshold": 0.1,
+    "pv_cellpose_filter_type": "CLAHE (Adaptativo Local)",
+    "pv_cellpose_diameter": 30.0,
+    "pv_cellpose_flow_threshold": 0.4,
+    "pv_cellpose_cellprob_threshold": 0.0,
+    "pnn_radius_um": 20.0,
+    "pnn_intensity_threshold": 500000.0,
     "pnn_exclusion_distance_um": 15.0
 }
