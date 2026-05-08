@@ -72,14 +72,28 @@ with st.expander("ℹ️ ¿Cómo funciona este pipeline de segmentación? (Docum
 
 
 # --- Paths ---
-# (Paths remain the same)
 RAW_DIR = "data/raw"
-MIPS_DIR = "data/processed/mips"
-SEGM_DIR = "data/processed/segmented"
-METRICS_DIR = "data/processed/metrics"
+MIPS_BASE_DIR = "data/processed/mips"
+SEGM_BASE_DIR = "data/processed/segmented"
+METRICS_BASE_DIR = "data/processed/metrics"
 CONFIG_PATH = "experiment_config.json"
 
-os.makedirs(MIPS_DIR, exist_ok=True)
+if not os.path.exists(MIPS_BASE_DIR):
+    st.error(f"No se encontró la carpeta `{MIPS_BASE_DIR}`. Por favor, genera los MIPs en la Página 1.")
+    st.stop()
+
+# Get groups (subdirectories)
+groups = sorted([d for d in os.listdir(MIPS_BASE_DIR) if os.path.isdir(os.path.join(MIPS_BASE_DIR, d))])
+if not groups:
+    groups = ["."]
+
+st.sidebar.header("📁 Selección de Grupo")
+selected_group = st.sidebar.selectbox("Grupo:", groups)
+
+MIPS_DIR = os.path.join(MIPS_BASE_DIR, selected_group)
+SEGM_DIR = os.path.join(SEGM_BASE_DIR, selected_group)
+METRICS_DIR = os.path.join(METRICS_BASE_DIR, selected_group)
+
 os.makedirs(SEGM_DIR, exist_ok=True)
 os.makedirs(METRICS_DIR, exist_ok=True)
 
@@ -90,7 +104,7 @@ if os.path.exists(CONFIG_PATH):
     with open(CONFIG_PATH, 'r') as f:
         calib_data = json.load(f)
     st.sidebar.success("✅ Configuración Global Cargada")
-    st.sidebar.json(calib_data)
+    # st.sidebar.json(calib_data) # Removed for space
 else:
     st.sidebar.warning("⚠️ No se encontró la configuración global. Modifica los parámetros en la Página 1.")
 
@@ -227,7 +241,7 @@ if st.sidebar.button("🔬 Segmentar Muestra Actual", type="primary", use_contai
                 input_dapi = (clahe * 65535).astype(np.uint16)
 
             model_dapi = models.CellposeModel(gpu=use_gpu, model_type=model_type)
-            masks_dapi, _, _ = model_dapi.eval(input_dapi, diameter=diameter, channels=[0,0], flow_threshold=flow_threshold, cellprob_threshold=cellprob_threshold)
+            masks_dapi, _, _ = model_dapi.eval(input_dapi, diameter=diameter, flow_threshold=flow_threshold, cellprob_threshold=cellprob_threshold)
             
             # --- 2. PV Segmentation (Optional) ---
             masks_pv = np.zeros_like(masks_dapi)
@@ -241,7 +255,7 @@ if st.sidebar.button("🔬 Segmentar Muestra Actual", type="primary", use_contai
                     input_pv = (clahe * 65535).astype(np.uint16)
                 
                 model_pv = models.CellposeModel(gpu=use_gpu, model_type="nuclei")
-                masks_pv, _, _ = model_pv.eval(input_pv, diameter=pv_diameter, channels=[0,0], flow_threshold=pv_flow_threshold, cellprob_threshold=pv_cellprob_threshold)
+                masks_pv, _, _ = model_pv.eval(input_pv, diameter=pv_diameter, flow_threshold=pv_flow_threshold, cellprob_threshold=pv_cellprob_threshold)
 
             # --- 3. PNN and Colocalization Analysis ---
             props = regionprops(masks_dapi, intensity_image=wfa_raw)
@@ -264,8 +278,8 @@ if st.sidebar.button("🔬 Segmentar Muestra Actual", type="primary", use_contai
                     'centroid_y': centroid[0],
                     'centroid_x': centroid[1],
                     'area_um2': p.area * (px_size**2),
-                    'diameter_um': p.equivalent_diameter * px_size,
-                    'dapi_mean_intensity': p.mean_intensity,
+                    'diameter_um': p.equivalent_diameter_area * px_size,
+                    'dapi_mean_intensity': p.intensity_mean,
                     'wfa_sum_intensity': wfa_sum,
                     'is_pnn_plus': is_pnn_plus,
                     'is_pv_plus': is_pv_plus
@@ -358,87 +372,191 @@ if st.sidebar.button("🔬 Segmentar Muestra Actual", type="primary", use_contai
 
 st.sidebar.divider()
 
-# Batch Processing
+# ─────────────────────────────────────────────
+# Helper function: process a single MIP file
+# ─────────────────────────────────────────────
+def run_pipeline_on_file(mip_path, out_segm_dir, out_metrics_dir,
+                         model_dapi, model_pv_obj,
+                         filter_type, diameter, flow_threshold, cellprob_threshold,
+                         pv_filter_type, pv_diameter, pv_flow_threshold, pv_cellprob_threshold,
+                         pnn_radius_um, pnn_threshold, pnn_exclusion_dist_um,
+                         px_size, do_pv_segmentation, calib_data):
+    fname = os.path.basename(mip_path)
+    (p_raw, w_raw, d_raw, a_raw), _ = load_channels(mip_path)
+
+    # DAPI preprocessing
+    in_dapi = d_raw.copy()
+    if filter_type == "Otsu Global":
+        t = threshold_otsu(in_dapi)
+        in_dapi[in_dapi < t] = 0
+    elif filter_type == "CLAHE (Adaptativo Local)":
+        clahe = exposure.equalize_adapthist(in_dapi, clip_limit=0.03)
+        in_dapi = (clahe * 65535).astype(np.uint16)
+
+    m_dapi, _, _ = model_dapi.eval(in_dapi, diameter=diameter, channels=[0, 0],
+                                    flow_threshold=flow_threshold, cellprob_threshold=cellprob_threshold)
+
+    # PV preprocessing
+    m_pv = np.zeros_like(m_dapi)
+    if do_pv_segmentation and model_pv_obj is not None:
+        in_pv = p_raw.copy()
+        if pv_filter_type == "Otsu Global":
+            t = threshold_otsu(in_pv)
+            in_pv[in_pv < t] = 0
+        elif pv_filter_type == "CLAHE (Adaptativo Local)":
+            clahe = exposure.equalize_adapthist(in_pv, clip_limit=0.03)
+            in_pv = (clahe * 65535).astype(np.uint16)
+        m_pv, _, _ = model_pv_obj.eval(in_pv, diameter=pv_diameter, channels=[0, 0],
+                                        flow_threshold=pv_flow_threshold, cellprob_threshold=pv_cellprob_threshold)
+
+    # PNN analysis
+    p_batch = regionprops(m_dapi, intensity_image=w_raw)
+    r_batch = []
+    for pb in p_batch:
+        cr = pb.centroid
+        rd, cd = draw.disk(cr, pnn_radius_um / px_size, shape=w_raw.shape)
+        wfa_s = np.sum(w_raw[rd, cd])
+        r_batch.append({
+            'label': pb.label,
+            'centroid_y': cr[0],
+            'centroid_x': cr[1],
+            'area_um2': pb.area * (px_size ** 2),
+            'diameter_um': pb.equivalent_diameter_area * px_size,
+            'dapi_mean_intensity': pb.intensity_mean,
+            'wfa_sum_intensity': wfa_s,
+            'is_pnn_plus': wfa_s > pnn_threshold,
+            'is_pv_plus': m_pv[int(cr[0]), int(cr[1])] > 0
+        })
+
+    # NMS
+    pnn_cands = [i for i, r in enumerate(r_batch) if r['is_pnn_plus']]
+    if len(pnn_cands) > 1 and pnn_exclusion_dist_um > 0:
+        sorted_idx = sorted(pnn_cands, key=lambda i: r_batch[i]['wfa_sum_intensity'], reverse=True)
+        kept = []
+        for si in sorted_idx:
+            cy, cx = r_batch[si]['centroid_y'], r_batch[si]['centroid_x']
+            if not any(np.sqrt((cy - k[0])**2 + (cx - k[1])**2) * px_size < pnn_exclusion_dist_um for k in kept):
+                kept.append((cy, cx))
+            else:
+                r_batch[si]['is_pnn_plus'] = False
+
+    df_b = pd.DataFrame(r_batch)
+    df_b.to_csv(os.path.join(out_metrics_dir, fname.replace('_MIP.tif', '_nuclei_metrics.csv')), index=False)
+
+    # TIFF output
+    orig_b = tiff.imread(mip_path)
+    m_pnn_b = np.zeros_like(m_dapi, dtype=np.uint16)
+    pnn_lbls = df_b[df_b['is_pnn_plus']]['label'].values
+    if len(pnn_lbls) > 0:
+        lut = np.zeros(int(np.max(m_dapi)) + 1, dtype=np.uint16)
+        for lb in pnn_lbls:
+            lut[int(lb)] = int(lb)
+        m_pnn_b = lut[m_dapi.astype(int)]
+
+    stk = np.concatenate([orig_b,
+                          np.expand_dims(m_dapi.astype(np.uint16), 0),
+                          np.expand_dims(m_pv.astype(np.uint16), 0),
+                          np.expand_dims(m_pnn_b, 0)], axis=0)
+    ch_names = calib_data.get('channels', ['AGR', 'DAPI', 'WFA', 'PV'])
+    tiff.imwrite(os.path.join(out_segm_dir, fname.replace('_MIP.tif', '_segmented.tif')),
+                 stk, imagej=True,
+                 metadata={'spacing': px_size, 'unit': 'um', 'Axes': 'CYX',
+                           'Labels': ch_names + ['DAPI_Mask', 'PV_Mask', 'PNN_Mask']})
+
+    # Summary JSON
+    summary = {
+        "total_dapi": len(df_b),
+        "total_pv_segmentation": int(np.max(m_pv)),
+        "pnn_plus": int(df_b['is_pnn_plus'].sum()),
+        "pnn_minus": int((~df_b['is_pnn_plus']).sum()),
+        "dapi_pv_coloc": int(df_b['is_pv_plus'].sum()),
+        "pixel_size": px_size
+    }
+    with open(os.path.join(out_metrics_dir, fname.replace('_MIP.tif', '_summary.json')), 'w') as fs:
+        json.dump(summary, fs, indent=4)
+
+    return summary
+
+
+# ─────────────────────────────────────────────
+# Batch Buttons
+# ─────────────────────────────────────────────
 st.sidebar.subheader("🚀 Procesamiento en Lote")
-if st.sidebar.button("Segmentar Todas las Imágenes", use_container_width=True):
-    with st.spinner("Procesando lote (DAPI + PV + PNN)..."):
-        success = 0
-        model_dapi = models.CellposeModel(gpu=use_gpu, model_type=model_type)
-        model_pv = models.CellposeModel(gpu=use_gpu, model_type="nuclei") if do_pv_segmentation else None
+
+if st.sidebar.button("▶️ Segmentar Grupo Actual", use_container_width=True):
+    px_size = calib_data.get('pixel_size_um', 1.0)
+    model_d = models.CellposeModel(gpu=use_gpu, model_type=model_type)
+    model_p = models.CellposeModel(gpu=use_gpu, model_type="nuclei") if do_pv_segmentation else None
+    progress = st.sidebar.progress(0)
+    success = 0
+    for idx, f in enumerate(processed_files):
+        try:
+            run_pipeline_on_file(
+                os.path.join(MIPS_DIR, f), SEGM_DIR, METRICS_DIR,
+                model_d, model_p,
+                filter_type, diameter, flow_threshold, cellprob_threshold,
+                pv_filter_type, pv_diameter, pv_flow_threshold, pv_cellprob_threshold,
+                pnn_radius_um, pnn_threshold, pnn_exclusion_dist_um,
+                px_size, do_pv_segmentation, calib_data
+            )
+            success += 1
+        except Exception as e:
+            st.sidebar.error(f"Error en {f}: {e}")
+        progress.progress((idx + 1) / len(processed_files))
+    st.sidebar.success(f"✅ Grupo '{selected_group}': {success}/{len(processed_files)} imágenes procesadas.")
+
+st.sidebar.divider()
+
+if st.sidebar.button("🌍 Segmentar TODOS los Grupos", use_container_width=True, type="primary"):
+    px_size = calib_data.get('pixel_size_um', 1.0)
+    all_groups = sorted([d for d in os.listdir(MIPS_BASE_DIR) if os.path.isdir(os.path.join(MIPS_BASE_DIR, d))])
+    
+    # Count total files across all groups
+    all_tasks = []
+    for g in all_groups:
+        g_mips_dir = os.path.join(MIPS_BASE_DIR, g)
+        mip_files = [f for f in os.listdir(g_mips_dir) if f.endswith('_MIP.tif')]
+        for mf in mip_files:
+            all_tasks.append((g, mf))
+    
+    if not all_tasks:
+        st.sidebar.warning("No se encontraron MIPs en ningún grupo. Genera MIPs en la Página 1 primero.")
+    else:
+        st.sidebar.info(f"Procesando {len(all_tasks)} imágenes en {len(all_groups)} grupos...")
         
-        progress = st.sidebar.progress(0)
-        px_size = calib_data.get('pixel_size_um', 1.0)
+        # Load models once for efficiency
+        model_d = models.CellposeModel(gpu=use_gpu, model_type=model_type)
+        model_p = models.CellposeModel(gpu=use_gpu, model_type="nuclei") if do_pv_segmentation else None
         
-        for idx, f in enumerate(processed_files):
+        progress_bar = st.sidebar.progress(0)
+        status_text = st.sidebar.empty()
+        total_success = 0
+        
+        for task_idx, (grp, fname) in enumerate(all_tasks):
+            g_mips = os.path.join(MIPS_BASE_DIR, grp)
+            g_segm = os.path.join(SEGM_BASE_DIR, grp)
+            g_metrics = os.path.join(METRICS_BASE_DIR, grp)
+            os.makedirs(g_segm, exist_ok=True)
+            os.makedirs(g_metrics, exist_ok=True)
+            
+            status_text.caption(f"⏳ [{task_idx+1}/{len(all_tasks)}] {grp} / {fname}")
             try:
-                p = os.path.join(MIPS_DIR, f)
-                (p_raw_b, w_raw_b, d_raw_b, a_raw_b), _ = load_channels(p)
-                
-                # DAPI
-                in_dapi = d_raw_b.copy()
-                if filter_type == "CLAHE (Adaptativo Local)":
-                    clahe = exposure.equalize_adapthist(in_dapi, clip_limit=0.03)
-                    in_dapi = (clahe * 65535).astype(np.uint16)
-                
-                m_dapi, _, _ = model_dapi.eval(in_dapi, diameter=diameter, channels=[0,0], flow_threshold=flow_threshold, cellprob_threshold=cellprob_threshold)
-                
-                # PV
-                m_pv = np.zeros_like(m_dapi)
-                if do_pv_segmentation:
-                    in_pv = p_raw_b.copy()
-                    m_pv, _, _ = model_pv.eval(in_pv, diameter=pv_diameter, channels=[0,0], flow_threshold=pv_flow_threshold, cellprob_threshold=pv_cellprob_threshold)
-                
-                # PNN
-                p_batch = regionprops(m_dapi, intensity_image=w_raw_b)
-                r_batch = []
-                for pb in p_batch:
-                    cr = pb.centroid
-                    rd, cd = draw.disk(cr, pnn_radius_um / px_size, shape=w_raw_b.shape)
-                    is_pn = np.sum(w_raw_b[rd, cd]) > pnn_threshold
-                    r_batch.append({
-                        'label': pb.label,
-                        'centroid_y': cr[0],
-                        'centroid_x': cr[1],
-                        'wfa_sum_intensity': np.sum(w_raw_b[rd, cd]),
-                        'is_pnn_plus': is_pn,
-                        'is_pv_plus': m_pv[int(cr[0]), int(cr[1])] > 0
-                    })
-                
-                # NMS logic
-                pnn_c_idx = [i for i, r in enumerate(r_batch) if r['is_pnn_plus']]
-                if len(pnn_c_idx) > 1 and pnn_exclusion_dist_um > 0:
-                    sorted_idx = sorted(pnn_c_idx, key=lambda i: r_batch[i]['wfa_sum_intensity'], reverse=True)
-                    kp = []
-                    for s_idx in sorted_idx:
-                        c_curr = (r_batch[s_idx]['centroid_y'], r_batch[s_idx]['centroid_x'])
-                        if not any(np.sqrt((c_curr[0]-k[0])**2 + (c_curr[1]-k[1])**2) * px_size < pnn_exclusion_dist_um for k in kp):
-                            kp.append(c_curr)
-                        else:
-                            r_batch[s_idx]['is_pnn_plus'] = False
-                
-                pd.DataFrame(r_batch).to_csv(os.path.join(METRICS_DIR, f.replace('_MIP.tif', '_nuclei_metrics.csv')), index=False)
-                
-                # Tiff output
-                orig_m_b = tiff.imread(p)
-                m_pnn_b = np.zeros_like(m_dapi, dtype=np.uint16)
-                p_labels_b = [r['label'] for r in r_batch if r['is_pnn_plus']]
-                if p_labels_b:
-                    lut_b = np.zeros(int(np.max(m_dapi)) + 1, dtype=np.uint16)
-                    for lb in p_labels_b: lut_b[int(lb)] = int(lb)
-                    m_pnn_b = lut_b[m_dapi.astype(int)]
-                
-                stk_b = np.concatenate([orig_m_b, np.expand_dims(m_dapi.astype(np.uint16),0), np.expand_dims(m_pv.astype(np.uint16),0), np.expand_dims(m_pnn_b,0)], axis=0)
-                tiff.imwrite(os.path.join(SEGM_DIR, f.replace('_MIP.tif', '_segmented.tif')), stk_b, imagej=True, metadata={'spacing': px_size, 'unit': 'um', 'Axes': 'CYX', 'Labels': ['Ch1', 'DAPI', 'WFA', 'PV', 'DAPI_Mask', 'PV_Mask', 'PNN_Mask']})
-                
-                # Summary
-                sum_b = {"total_dapi": len(r_batch), "total_pv_segmentation": int(np.max(m_pv)), "pnn_plus": int(sum(x['is_pnn_plus'] for x in r_batch)), "dapi_pv_coloc": int(sum(x['is_pv_plus'] for x in r_batch)), "pixel_size": px_size}
-                with open(os.path.join(METRICS_DIR, f.replace('_MIP.tif', '_summary.json')), 'w') as fs: json.dump(sum_b, fs, indent=4)
-                
-                success += 1
+                run_pipeline_on_file(
+                    os.path.join(g_mips, fname), g_segm, g_metrics,
+                    model_d, model_p,
+                    filter_type, diameter, flow_threshold, cellprob_threshold,
+                    pv_filter_type, pv_diameter, pv_flow_threshold, pv_cellprob_threshold,
+                    pnn_radius_um, pnn_threshold, pnn_exclusion_dist_um,
+                    px_size, do_pv_segmentation, calib_data
+                )
+                total_success += 1
             except Exception as e:
-                st.sidebar.error(f"Error en {f}: {e}")
-            progress.progress((idx + 1) / len(processed_files))
-        st.sidebar.success(f"Batch completado: {success}/{len(processed_files)}")
+                st.sidebar.error(f"❌ {grp}/{fname}: {e}")
+            
+            progress_bar.progress((task_idx + 1) / len(all_tasks))
+        
+        status_text.empty()
+        st.sidebar.success(f"🎉 Batch Global completado: {total_success}/{len(all_tasks)} imágenes procesadas en {len(all_groups)} grupos.")
 
 with col2:
     st.markdown('<p class="img-caption">Visualización de Resultados</p>', unsafe_allow_html=True)

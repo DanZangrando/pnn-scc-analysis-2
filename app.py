@@ -90,6 +90,7 @@ st.write("""
 2. **Detección de PV+:** Clasificación de neuronas según su expresión de Parvalbúmina.
 3. **Análisis de PNNs:** Cuantificación de la intensidad y presencia de redes rodeando a las células PV+.
 4. **Relación Espacial:** Evaluación de la proporción de células PV envueltas por PNN en la SSC.
+5. **Estadísticas Comparativas:** Análisis automático entre grupos (Sexo y Tratamiento).
 """)
 
 st.divider()
@@ -98,26 +99,35 @@ st.markdown("### 📂 Explorador de Datos")
 raw_data_path = "data/raw"
 
 if os.path.exists(raw_data_path):
-    # Search for CZI files in data/raw
-    czi_files = sorted([f for f in os.listdir(raw_data_path) if f.endswith('.czi')])
+    # Get groups (subdirectories)
+    groups = sorted([d for d in os.listdir(raw_data_path) if os.path.isdir(os.path.join(raw_data_path, d))])
     
-    if czi_files:
-        st.write(f"Se han detectado **{len(czi_files)}** archivos `.czi` nativos.")
-        selected_file = st.selectbox("Selecciona una imagen nativa:", czi_files)
+    if groups:
+        st.write(f"Se han detectado **{len(groups)}** grupos experimentales.")
+        selected_group = st.selectbox("Selecciona un Grupo:", groups)
         
-        # Display basic file info
-        st.info(f"Archivo seleccionado: `{selected_file}`")
-        st.markdown(f"""
-        - **Formato:** Nativo Zeiss (.czi)
-        - **Configuración de Canales:** 4 Canales (AGR, DAPI, WFA, PV)
-        - **Z-Stacks:** Multi-plano detectado
-        """)
+        group_dir = os.path.join(raw_data_path, selected_group)
+        czi_files = sorted([f for f in os.listdir(group_dir) if f.endswith('.czi')])
         
-        st.warning("🔬 **Integración con QuPath:** El análisis detallado se realizará abriendo estos archivos directamente en QuPath desde la aplicación.")
+        if czi_files:
+            st.write(f"El grupo `{selected_group}` contiene **{len(czi_files)}** imágenes.")
+            selected_file = st.selectbox("Selecciona una imagen nativa:", czi_files)
+            
+            # Display basic file info
+            st.info(f"Archivo seleccionado: `{selected_file}`")
+            st.markdown(f"""
+            - **Grupo:** {selected_group}
+            - **Formato:** Nativo Zeiss (.czi)
+            - **Configuración de Canales:** 4 Canales (AGR, DAPI, WFA, PV)
+            """)
+        else:
+            st.warning(f"No se detectaron archivos `.czi` en `{selected_group}`.")
     else:
-        st.warning("No se detectaron archivos `.czi` en `data/raw`. Verifica la ubicación de las imágenes.")
+        st.warning("No se detectaron subdirectorios de grupos en `data/raw`. Verifica la estructura.")
 else:
-    st.error(f"No se encontró el directorio `{raw_data_path}`. Por favor, verifica la estructura del proyecto.")
+    st.error(f"No se encontró el directorio `{raw_data_path}`.")
+
+st.warning("🔬 **Integración con QuPath:** El análisis detallado se realizará abriendo estos archivos directamente en QuPath desde la aplicación.")
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("Desarrollado para el análisis de SSC")

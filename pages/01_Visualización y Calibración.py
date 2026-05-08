@@ -130,26 +130,41 @@ def open_in_qupath(wsl_path, qupath_exe):
 
 # --- Data Loading ---
 
+# --- Data Loading ---
+
 RAW_DIR = "data/raw"
-PROCESSED_DIR = "data/processed/mips"
+PROCESSED_BASE_DIR = "data/processed/mips"
 CONFIG_PATH = "experiment_config.json"
-os.makedirs(PROCESSED_DIR, exist_ok=True)
 
 if not os.path.exists(RAW_DIR):
     st.error(f"No se encontró la carpeta `{RAW_DIR}`.")
     st.stop()
 
-czi_files = sorted([f for f in os.listdir(RAW_DIR) if f.endswith('.czi')])
+# Get groups (subdirectories)
+groups = sorted([d for d in os.listdir(RAW_DIR) if os.path.isdir(os.path.join(RAW_DIR, d))])
+if not groups:
+    # If no subdirectories, fall back to root or show error
+    groups = ["."] 
+
+st.sidebar.header("📁 Selección de Grupo")
+selected_group = st.sidebar.selectbox("Grupo:", groups)
+group_dir = os.path.join(RAW_DIR, selected_group)
+
+# Update PROCESSED_DIR to include group
+PROCESSED_DIR = os.path.join(PROCESSED_BASE_DIR, selected_group)
+os.makedirs(PROCESSED_DIR, exist_ok=True)
+
+czi_files = sorted([f for f in os.listdir(group_dir) if f.endswith('.czi')])
 
 if not czi_files:
-    st.warning("No se detectaron archivos `.czi` en `data/raw`.")
+    st.warning(f"No se detectaron archivos `.czi` en `{group_dir}`.")
     st.stop()
 
 # --- Sidebar ---
 
 st.sidebar.header("📂 Selección de Muestra")
 selected_filename = st.sidebar.selectbox("Archivo CZI:", czi_files)
-selected_path = os.path.abspath(os.path.join(RAW_DIR, selected_filename))
+selected_path = os.path.abspath(os.path.join(group_dir, selected_filename))
 
 # Metadata
 meta = get_czi_metadata(selected_path)
@@ -182,7 +197,7 @@ st.sidebar.text(f"Resolución Total: {meta['width']} x {meta['height']}")
 
 # --- Main Page ---
 
-st.subheader(f"Muestra: {selected_filename}")
+st.subheader(f"Muestra: {selected_filename} (Grupo: {selected_group})")
 
 # Create 4 columns for the 4 channels
 cols = st.columns(4)
@@ -255,12 +270,12 @@ with act_col1:
 
     st.write("---")
     
-    if st.button("🚀 Procesar TODAS las Imágenes (Batch MIPS)"):
+    if st.button("🚀 Procesar TODAS las Imágenes del Grupo (Batch MIPS)"):
         with st.spinner(f"Procesando {len(czi_files)} imágenes. Esto puede tardar varios minutos..."):
             success_count = 0
             for file in czi_files:
                 try:
-                    p = os.path.join(RAW_DIR, file)
+                    p = os.path.join(group_dir, file)
                     planes = [get_mip_preview(p, i, scale=1.0) for i in range(min(4, len(meta['channels'])))]
                     stack = np.stack(planes)
                     out_name = file.replace('.czi', '_MIP.tif')
@@ -269,7 +284,7 @@ with act_col1:
                     success_count += 1
                 except Exception as e:
                     st.error(f"Error procesando {file}: {e}")
-            st.success(f"¡Batch completado! {success_count}/{len(czi_files)} imágenes analizadas y guardadas.")
+            st.success(f"¡Batch completado! {success_count}/{len(czi_files)} imágenes analizadas y guardadas en {PROCESSED_DIR}.")
 
 with act_col2:
     st.subheader("🖥️ Inspección Externa")
@@ -289,9 +304,6 @@ with act_col2:
         if st.button("🖼️ Abrir MIP Generado en QuPath", type="primary"):
             if open_in_qupath(mip_path, qupath_exe):
                 st.success("✅ Abriendo Proyección TIFF en QuPath.")
-    else:
-        st.button("🖼️ Abrir MIP Generado en QuPath", disabled=True)
-        st.caption("⚠️ Genera el MIP primero en la caja de 'Procesamiento' para habilitar este botón.")
 
 # Save state
 st.session_state['selected_file'] = selected_filename

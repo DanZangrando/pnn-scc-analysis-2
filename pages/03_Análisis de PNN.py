@@ -24,10 +24,24 @@ st.markdown("""
 st.title("🕸️ Página 3: Análisis Morfológico de PNN (Esqueletos)")
 
 # --- Paths ---
-MIPS_DIR = "data/processed/mips"
-SEGM_DIR = "data/processed/segmented"
-METRICS_DIR = "data/processed/metrics"
+SEGM_BASE_DIR = "data/processed/segmented"
+METRICS_BASE_DIR = "data/processed/metrics"
 CONFIG_PATH = "experiment_config.json"
+
+if not os.path.exists(SEGM_BASE_DIR):
+    st.error("No hay imágenes segmentadas disponibles. Procesa imágenes en la Página 2 primero.")
+    st.stop()
+
+# Get groups
+groups = sorted([d for d in os.listdir(SEGM_BASE_DIR) if os.path.isdir(os.path.join(SEGM_BASE_DIR, d))])
+if not groups:
+    groups = ["."]
+
+st.sidebar.header("📁 Selección de Grupo")
+selected_group = st.sidebar.selectbox("Grupo:", groups)
+
+SEGM_DIR = os.path.join(SEGM_BASE_DIR, selected_group)
+METRICS_DIR = os.path.join(METRICS_BASE_DIR, selected_group)
 
 # --- Load Config ---
 calib_data = {}
@@ -40,10 +54,12 @@ else:
     px_size = 1.0
 
 # --- Data Loading ---
-segmented_files = sorted([f for f in os.listdir(SEGM_DIR) if f.endswith('_segmented.tif')])
+segmented_files = []
+if os.path.exists(SEGM_DIR):
+    segmented_files = sorted([f for f in os.listdir(SEGM_DIR) if f.endswith('_segmented.tif')])
 
 if not segmented_files:
-    st.error("No hay imágenes segmentadas disponibles. Procesa imágenes en la Página 2 primero.")
+    st.error(f"No hay imágenes segmentadas en `{SEGM_DIR}`.")
     st.stop()
 
 st.sidebar.header("📂 Selección de Datos")
