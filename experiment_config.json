@@ -7,16 +7,17 @@
         "WFA",
         "PV"
     ],
-    "cellpose_filter_type": "CLAHE (Adaptativo Local)",
-    "cellpose_diameter": 30.0,
+    "cellpose_filter_type": "Ninguno",
+    "cellpose_diameter": 5.0,
     "cellpose_flow_threshold": 0.4,
     "cellpose_cellprob_threshold": 0.1,
-    "pv_cellpose_filter_type": "CLAHE (Adaptativo Local)",
-    "pv_cellpose_diameter": 30.0,
-    "pv_cellpose_flow_threshold": 0.4,
+    "pv_cellpose_filter_type": "Otsu Global",
+    "pv_cellpose_diameter": 10.0,
+    "pv_cellpose_flow_threshold": 0.3,
     "pv_cellpose_cellprob_threshold": 0.0,
     "pnn_radius_um": 20.0,
-    "pnn_intensity_threshold": 500000.0,
-    "pnn_exclusion_distance_um": 15.0,
-    "do_pv_segmentation": true
+    "pnn_intensity_threshold": 5000.0,
+    "pnn_exclusion_distance_um": 1.0,
+    "do_pv_segmentation": true,
+    "pv_expansion_dist_um": 2.0
 }

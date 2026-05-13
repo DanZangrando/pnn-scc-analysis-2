@@ -88,7 +88,7 @@ with st.sidebar.expander("🧪 Parámetros Cellpose (PV)"):
     pv_prob = st.slider("Cell Prob Threshold (PV)", -6.0, 6.0, float(calib_data.get('pv_cellpose_cellprob_threshold', 0.0)))
 
 with st.sidebar.expander("🕸️ Parámetros PNN (WFA)"):
-    pnn_rad = st.number_input("Radio de búsqueda (µm)", value=float(calib_data.get('pnn_radius_um', 20.0)), step=1.0)
+    pv_expansion_dist_um = st.number_input("Distancia de expansión desde PV+ (µm)", value=float(calib_data.get('pv_expansion_dist_um', 5.0)), step=1.0)
     pnn_thresh = st.number_input("Umbral Intensidad WFA", value=float(calib_data.get('pnn_intensity_threshold', 500000.0)), step=10000.0)
     pnn_excl = st.number_input("Distancia exclusión (µm)", value=float(calib_data.get('pnn_exclusion_distance_um', 15.0)), step=1.0)
 
@@ -104,7 +104,7 @@ if st.sidebar.button("💾 Guardar Toda la Configuración"):
         'pv_cellpose_diameter': pv_diam,
         'pv_cellpose_flow_threshold': pv_flow,
         'pv_cellpose_cellprob_threshold': pv_prob,
-        'pnn_radius_um': pnn_rad,
+        'pv_expansion_dist_um': pv_expansion_dist_um,
         'pnn_intensity_threshold': pnn_thresh,
         'pnn_exclusion_distance_um': pnn_excl,
         'channels': ["AGR", "DAPI", "WFA", "PV"]
@@ -187,7 +187,25 @@ st.divider()
 st.markdown("### 🚀 Ejecución Global")
 st.write("Usa este botón para procesar todas las imágenes detectadas con los parámetros configurados en la barra lateral.")
 
-if st.button("▶️ Procesar Todo el Experimento en Batch", type="primary", use_container_width=True):
+if st.button("▶️ Procesar Todo el Experimento en Batch", type="primary", width="stretch"):
+    calib_data.update({
+        'pixel_size_um': px_size,
+        'cellpose_filter_type': dapi_filter,
+        'cellpose_diameter': dapi_diam,
+        'cellpose_flow_threshold': dapi_flow,
+        'cellpose_cellprob_threshold': dapi_prob,
+        'do_pv_segmentation': do_pv,
+        'pv_cellpose_filter_type': pv_filter,
+        'pv_cellpose_diameter': pv_diam,
+        'pv_cellpose_flow_threshold': pv_flow,
+        'pv_cellpose_cellprob_threshold': pv_prob,
+        'pv_expansion_dist_um': pv_expansion_dist_um,
+        'pnn_intensity_threshold': pnn_thresh,
+        'pnn_exclusion_distance_um': pnn_excl,
+        'channels': ["AGR", "DAPI", "WFA", "PV"]
+    })
+    save_config(calib_data)
+
     if not all_tasks:
         st.error("No se encontraron imágenes `.TIF` en la estructura de `data/raw`.")
     else:
@@ -198,8 +216,8 @@ if st.button("▶️ Procesar Todo el Experimento en Batch", type="primary", use
         use_gpu = torch.cuda.is_available()
         
         with st.spinner("Cargando modelos de red neuronal..."):
-            model_dapi = models.CellposeModel(gpu=use_gpu, model_type="nuclei") # using nuclei as default base
-            model_pv = models.CellposeModel(gpu=use_gpu, model_type="nuclei") if do_pv else None
+            model_dapi = models.CellposeModel(gpu=use_gpu) # using default cpsam model
+            model_pv = models.CellposeModel(gpu=use_gpu) if do_pv else None
         
         progress_bar = st.progress(0)
         status_text = st.empty()
@@ -230,7 +248,7 @@ if st.button("▶️ Procesar Todo el Experimento en Batch", type="primary", use
                     pv_diameter=pv_diam,
                     pv_flow_threshold=pv_flow,
                     pv_cellprob_threshold=pv_prob,
-                    pnn_radius_um=pnn_rad,
+                    pv_expansion_dist_um=pv_expansion_dist_um,
                     pnn_threshold=pnn_thresh,
                     pnn_exclusion_dist_um=pnn_excl,
                     px_size=px_size,

@@ -96,11 +96,11 @@ col1, col2 = st.columns(2)
 with col1:
     st.markdown('<p class="img-caption">Canal de Referencia</p>', unsafe_allow_html=True)
     if view_mode == "Núcleos (DAPI)":
-        st.image(dapi_disp, use_container_width=True, clamp=True, channels="GRAY")
+        st.image(dapi_disp, width="stretch", clamp=True, channels="GRAY")
     elif view_mode == "Parvalbúmina (PV+)":
-        st.image(pv_disp, use_container_width=True, clamp=True, channels="GRAY")
+        st.image(pv_disp, width="stretch", clamp=True, channels="GRAY")
     else:
-        st.image(wfa_disp, use_container_width=True, clamp=True, channels="GRAY")
+        st.image(wfa_disp, width="stretch", clamp=True, channels="GRAY")
 
 # --- Configuration (can edit here and save to global) ---
 st.sidebar.header("⚙️ Configuración (Preview)")
@@ -120,7 +120,7 @@ with st.sidebar.expander("Parámetros Cellpose (PV)"):
     pv_cellprob_threshold = st.slider("Cellprob PV", -6.0, 6.0, float(calib_data.get('pv_cellpose_cellprob_threshold', 0.0)))
 
 with st.sidebar.expander("Parámetros PNN"):
-    pnn_radius_um = st.number_input("Radio PNN (µm)", value=float(calib_data.get('pnn_radius_um', 20.0)))
+    pv_expansion_dist_um = st.number_input("Expansión PV+ (µm)", value=float(calib_data.get('pv_expansion_dist_um', 5.0)))
     pnn_threshold = st.number_input("Umbral WFA", value=float(calib_data.get('pnn_intensity_threshold', 500000.0)))
     pnn_exclusion_dist_um = st.number_input("Exclusión (µm)", value=float(calib_data.get('pnn_exclusion_distance_um', 15.0)))
 
@@ -128,11 +128,31 @@ px_size = calib_data.get('pixel_size_um', 1.0)
 
 st.sidebar.divider()
 st.sidebar.info("Para procesar todas las imágenes, utiliza el botón de 'Batch' en la página Principal.")
-if st.sidebar.button("🔬 Previsualizar Segmentación", type="primary", use_container_width=True):
+if st.sidebar.button("🔬 Previsualizar Segmentación", type="primary", width="stretch"):
+    # Auto-guardar configuración local en el global config
+    calib_data.update({
+        'pixel_size_um': px_size,
+        'cellpose_filter_type': filter_type,
+        'cellpose_diameter': diameter,
+        'cellpose_flow_threshold': flow_threshold,
+        'cellpose_cellprob_threshold': cellprob_threshold,
+        'do_pv_segmentation': do_pv,
+        'pv_cellpose_filter_type': pv_filter_type,
+        'pv_cellpose_diameter': pv_diameter,
+        'pv_cellpose_flow_threshold': pv_flow_threshold,
+        'pv_cellpose_cellprob_threshold': pv_cellprob_threshold,
+        'pv_expansion_dist_um': pv_expansion_dist_um,
+        'pnn_intensity_threshold': pnn_threshold,
+        'pnn_exclusion_distance_um': pnn_exclusion_dist_um,
+        'channels': ["AGR", "DAPI", "WFA", "PV"]
+    })
+    with open(CONFIG_PATH, 'w') as f:
+        json.dump(calib_data, f, indent=4)
+        
     with st.spinner("Ejecutando Pipeline para esta imagen..."):
         try:
-            model_dapi = models.CellposeModel(gpu=use_gpu, model_type="nuclei")
-            model_pv = models.CellposeModel(gpu=use_gpu, model_type="nuclei") if do_pv else None
+            model_dapi = models.CellposeModel(gpu=use_gpu)
+            model_pv = models.CellposeModel(gpu=use_gpu) if do_pv else None
             
             run_pipeline_on_file(
                 tif_path=selected_path,
@@ -142,7 +162,7 @@ if st.sidebar.button("🔬 Previsualizar Segmentación", type="primary", use_con
                 model_pv_obj=model_pv,
                 filter_type=filter_type, diameter=diameter, flow_threshold=flow_threshold, cellprob_threshold=cellprob_threshold,
                 pv_filter_type=pv_filter_type, pv_diameter=pv_diameter, pv_flow_threshold=pv_flow_threshold, pv_cellprob_threshold=pv_cellprob_threshold,
-                pnn_radius_um=pnn_radius_um, pnn_threshold=pnn_threshold, pnn_exclusion_dist_um=pnn_exclusion_dist_um,
+                pv_expansion_dist_um=pv_expansion_dist_um, pnn_threshold=pnn_threshold, pnn_exclusion_dist_um=pnn_exclusion_dist_um,
                 px_size=px_size, do_pv_segmentation=do_pv, calib_data=calib_data
             )
             st.sidebar.success("Segmentación de prueba finalizada.")
@@ -171,21 +191,27 @@ with col2:
                 
     if current_masks is not None:
         overlay = label2rgb(np.squeeze(current_masks), image=base_img, bg_label=0, alpha=0.4, image_alpha=1)
-        st.image(overlay, use_container_width=True, clamp=True)
+        st.image(overlay, width="stretch", clamp=True)
     else:
         st.info("👈 Procesa la muestra para previsualizar los resultados.")
 
 st.divider()
 if os.path.exists(csv_file):
     df_metrics = pd.read_csv(csv_file)
+    json_file = csv_file.replace('_nuclei_metrics.csv', '_summary.json')
+    dapi_count = 'N/A'
+    if os.path.exists(json_file):
+        with open(json_file, 'r') as jf:
+            summary_data = json.load(jf)
+            dapi_count = summary_data.get('total_dapi', 'N/A')
+
     st.subheader("📊 Dashboard de Resultados (Vista Previa)")
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Total DAPI (Núcleos)", len(df_metrics))
-    m2.metric("Total PV+", df_metrics['is_pv_plus'].sum() if 'is_pv_plus' in df_metrics.columns else 0)
+    m1.metric("Total DAPI (Núcleos)", dapi_count)
+    m2.metric("Células Analizadas (PV+)", len(df_metrics))
     pnn_count = df_metrics['is_pnn_plus'].sum() if 'is_pnn_plus' in df_metrics.columns else 0
-    m3.metric("PNN+ (Redes)", pnn_count)
-    coloc = df_metrics[(df_metrics.get('is_pnn_plus', False) == True) & (df_metrics.get('is_pv_plus', False) == True)].shape[0] if 'is_pv_plus' in df_metrics.columns else 0
-    m4.metric("Coloc (PV+/PNN+)", coloc)
+    m3.metric("PNN+ Detectadas", pnn_count)
+    m4.metric("% PNN+ / PV+", f"{(pnn_count / len(df_metrics) * 100):.1f}%" if len(df_metrics) > 0 else "0%")
     st.dataframe(df_metrics.head(20))
     
     st.markdown("### 🖥️ Inspección Visual en QuPath")

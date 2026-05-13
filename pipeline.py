@@ -8,6 +8,7 @@ from skimage.filters import threshold_otsu
 from skimage.measure import regionprops
 from skimage import exposure, draw
 import pandas as pd
+import scipy.ndimage as ndi
 
 def load_channels_tif(path):
     img = tiff.imread(path)
@@ -35,7 +36,7 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
                          model_dapi, model_pv_obj,
                          filter_type, diameter, flow_threshold, cellprob_threshold,
                          pv_filter_type, pv_diameter, pv_flow_threshold, pv_cellprob_threshold,
-                         pnn_radius_um, pnn_threshold, pnn_exclusion_dist_um,
+                         pv_expansion_dist_um, pnn_threshold, pnn_exclusion_dist_um,
                          px_size, do_pv_segmentation, calib_data):
     fname = os.path.basename(tif_path)
     (p_raw, w_raw, d_raw, a_raw) = load_channels_tif(tif_path)
@@ -49,7 +50,7 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
         clahe = exposure.equalize_adapthist(in_dapi, clip_limit=0.03)
         in_dapi = (clahe * 65535).astype(np.uint16)
 
-    m_dapi, _, _ = model_dapi.eval(in_dapi, diameter=diameter, channels=[0, 0],
+    m_dapi, _, _ = model_dapi.eval(in_dapi, diameter=diameter, 
                                     flow_threshold=flow_threshold, cellprob_threshold=cellprob_threshold)
 
     # PV preprocessing
@@ -62,27 +63,60 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
         elif pv_filter_type == "CLAHE (Adaptativo Local)":
             clahe = exposure.equalize_adapthist(in_pv, clip_limit=0.03)
             in_pv = (clahe * 65535).astype(np.uint16)
-        m_pv, _, _ = model_pv_obj.eval(in_pv, diameter=pv_diameter, channels=[0, 0],
+        m_pv, _, _ = model_pv_obj.eval(in_pv, diameter=pv_diameter, 
                                         flow_threshold=pv_flow_threshold, cellprob_threshold=pv_cellprob_threshold)
 
-    # PNN analysis
-    p_batch = regionprops(m_dapi, intensity_image=w_raw)
+    # PNN analysis based on PV segments
+    m_pnn_b = np.zeros_like(m_pv, dtype=np.uint16)
     r_batch = []
-    for pb in p_batch:
-        cr = pb.centroid
-        rd, cd = draw.disk(cr, pnn_radius_um / px_size, shape=w_raw.shape)
-        wfa_s = np.sum(w_raw[rd, cd])
-        r_batch.append({
-            'label': pb.label,
-            'centroid_y': cr[0],
-            'centroid_x': cr[1],
-            'area_um2': pb.area * (px_size ** 2),
-            'diameter_um': pb.equivalent_diameter_area * px_size,
-            'dapi_mean_intensity': pb.intensity_mean,
-            'wfa_sum_intensity': wfa_s,
-            'is_pnn_plus': wfa_s > pnn_threshold,
-            'is_pv_plus': m_pv[int(cr[0]), int(cr[1])] > 0
-        })
+    
+    if np.max(m_pv) > 0:
+        p_batch = regionprops(m_pv, intensity_image=w_raw)
+        expansion_px = int(pv_expansion_dist_um / px_size)
+        if expansion_px < 1:
+            expansion_px = 1
+            
+        for pb in p_batch:
+            # Get local bounding box padded by expansion_px
+            min_row, min_col, max_row, max_col = pb.bbox
+            min_row = max(0, min_row - expansion_px)
+            min_col = max(0, min_col - expansion_px)
+            max_row = min(m_pv.shape[0], max_row + expansion_px)
+            max_col = min(m_pv.shape[1], max_col + expansion_px)
+            
+            # Local mask for this specific PV cell
+            local_mask = (m_pv[min_row:max_row, min_col:max_col] == pb.label)
+            
+            # Dilate
+            local_dilated = ndi.binary_dilation(local_mask, iterations=expansion_px)
+            
+            # Ring (expanded minus original)
+            local_ring = local_dilated & (~local_mask)
+            
+            # Intensity
+            local_wfa = w_raw[min_row:max_row, min_col:max_col]
+            wfa_s = float(np.sum(local_wfa[local_ring]))
+            
+            cr = pb.centroid
+            is_pnn = wfa_s > pnn_threshold
+            
+            r_batch.append({
+                'label': pb.label,
+                'centroid_y': cr[0],
+                'centroid_x': cr[1],
+                'area_um2': pb.area * (px_size ** 2),
+                'diameter_um': pb.equivalent_diameter_area * px_size,
+                'wfa_sum_intensity': wfa_s,
+                'is_pnn_plus': is_pnn,
+                'is_pv_plus': True
+            })
+            
+            if is_pnn:
+                # Add to m_pnn_b using boolean indexing on a view
+                view = m_pnn_b[min_row:max_row, min_col:max_col]
+                # To prevent overlapping rings from overwriting completely with different IDs if we want both, 
+                # but standard label masks only keep one label per pixel.
+                view[local_ring] = pb.label
 
     # NMS
     pnn_cands = [i for i, r in enumerate(r_batch) if r['is_pnn_plus']]
@@ -95,8 +129,12 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
                 kept.append((cy, cx))
             else:
                 r_batch[si]['is_pnn_plus'] = False
+                m_pnn_b[m_pnn_b == r_batch[si]['label']] = 0
 
     df_b = pd.DataFrame(r_batch)
+    if df_b.empty:
+        df_b = pd.DataFrame(columns=['label', 'centroid_y', 'centroid_x', 'area_um2', 'diameter_um', 'wfa_sum_intensity', 'is_pnn_plus', 'is_pv_plus'])
+        
     df_b.to_csv(os.path.join(out_metrics_dir, fname.replace('.TIF', '_nuclei_metrics.csv').replace('.tif', '_nuclei_metrics.csv')), index=False)
 
     # TIFF output
@@ -109,13 +147,7 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
     if axes == 'YXC':
         orig_b = np.transpose(orig_b, (2, 0, 1))
         
-    m_pnn_b = np.zeros_like(m_dapi, dtype=np.uint16)
-    pnn_lbls = df_b[df_b['is_pnn_plus']]['label'].values if not df_b.empty else []
-    if len(pnn_lbls) > 0:
-        lut = np.zeros(int(np.max(m_dapi)) + 1, dtype=np.uint16)
-        for lb in pnn_lbls:
-            lut[int(lb)] = int(lb)
-        m_pnn_b = lut[m_dapi.astype(int)]
+
 
     stk = np.concatenate([orig_b,
                           np.expand_dims(m_dapi.astype(np.uint16), 0),
@@ -129,7 +161,7 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
 
     # Summary JSON
     summary = {
-        "total_dapi": len(df_b),
+        "total_dapi": int(np.max(m_dapi)),
         "total_pv_segmentation": int(np.max(m_pv)),
         "pnn_plus": int(df_b['is_pnn_plus'].sum()) if not df_b.empty else 0,
         "pnn_minus": int((~df_b['is_pnn_plus']).sum()) if not df_b.empty else 0,

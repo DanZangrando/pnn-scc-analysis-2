@@ -101,12 +101,9 @@ pnn_mask_full = img_stack[6]
 
 # --- Filter Cells ---
 st.sidebar.header("🎯 Filtros de Células")
-show_only_pv = st.sidebar.checkbox("Solo PV+", value=True)
 show_only_pnn = st.sidebar.checkbox("Solo PNN+", value=True)
 
 filtered_df = df_metrics.copy()
-if show_only_pv and 'is_pv_plus' in filtered_df.columns:
-    filtered_df = filtered_df[filtered_df['is_pv_plus'] == True]
 if show_only_pnn and 'is_pnn_plus' in filtered_df.columns:
     filtered_df = filtered_df[filtered_df['is_pnn_plus'] == True]
 
@@ -138,7 +135,7 @@ y1, y2 = max(0, cy-half), min(wfa_full.shape[0], cy+half)
 x1, x2 = max(0, cx-half), min(wfa_full.shape[1], cx+half)
 
 wfa_crop = wfa_full[y1:y2, x1:x2]
-mask_crop = dapi_mask[y1:y2, x1:x2] == selected_label
+mask_crop = pv_mask[y1:y2, x1:x2] == selected_label
 
 # Thresholding WFA for PNN structure
 if pnn_threshold_method == "Automático (Otsu)":
@@ -153,9 +150,8 @@ pnn_binary = wfa_crop > thresh
 
 # Optional: clean up binary (remove internal nucleus area)
 pnn_structure = pnn_binary.copy()
-# Dilate nucleus mask slightly to ensure we only skeletonize the outer ring
-nucleus_dilated = binary_dilation(mask_crop, disk(3))
-pnn_structure[nucleus_dilated] = 0
+# Remove the internal PV soma area to skeletonize the outer ring
+pnn_structure[mask_crop] = 0
 
 # Skeletonize
 skel = skeletonize(pnn_structure)
@@ -188,11 +184,11 @@ with col1:
     st.markdown("**Original WFA (Zoom)**")
     # Normalize for display
     disp_wfa = cv2.normalize(wfa_crop, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
-    st.image(disp_wfa, use_container_width=True)
+    st.image(disp_wfa, width="stretch")
 
 with col2:
     st.markdown("**Morfología (Binarizada)**")
-    st.image(pnn_structure.astype(np.uint8)*255, use_container_width=True)
+    st.image(pnn_structure.astype(np.uint8)*255, width="stretch")
 
 with col3:
     st.markdown("**Esqueleto (Skan)**")
