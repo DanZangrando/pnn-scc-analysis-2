@@ -2,10 +2,10 @@
     "pixel_size_um": 0.65,
     "z_spacing_um": 1.0,
     "channels": [
-        "AGR (AF488)",
+        "AGR",
         "DAPI",
-        "WFA (AF647)",
-        "PV (AF546)"
+        "WFA",
+        "PV"
     ],
     "cellpose_filter_type": "CLAHE (Adaptativo Local)",
     "cellpose_diameter": 30.0,
@@ -17,5 +17,6 @@
     "pv_cellpose_cellprob_threshold": 0.0,
     "pnn_radius_um": 20.0,
     "pnn_intensity_threshold": 500000.0,
-    "pnn_exclusion_distance_um": 15.0
+    "pnn_exclusion_distance_um": 15.0,
+    "do_pv_segmentation": true
 }

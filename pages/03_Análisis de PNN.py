@@ -29,19 +29,29 @@ METRICS_BASE_DIR = "data/processed/metrics"
 CONFIG_PATH = "experiment_config.json"
 
 if not os.path.exists(SEGM_BASE_DIR):
-    st.error("No hay imágenes segmentadas disponibles. Procesa imágenes en la Página 2 primero.")
+    st.error("No hay imágenes segmentadas disponibles. Procesa imágenes en la Página 2 (o en lote) primero.")
     st.stop()
 
 # Get groups
 groups = sorted([d for d in os.listdir(SEGM_BASE_DIR) if os.path.isdir(os.path.join(SEGM_BASE_DIR, d))])
 if not groups:
-    groups = ["."]
+    st.warning("No hay grupos procesados.")
+    st.stop()
 
-st.sidebar.header("📁 Selección de Grupo")
+st.sidebar.header("📁 Selección de Datos")
 selected_group = st.sidebar.selectbox("Grupo:", groups)
 
-SEGM_DIR = os.path.join(SEGM_BASE_DIR, selected_group)
-METRICS_DIR = os.path.join(METRICS_BASE_DIR, selected_group)
+group_dir = os.path.join(SEGM_BASE_DIR, selected_group)
+sections = sorted([d for d in os.listdir(group_dir) if os.path.isdir(os.path.join(group_dir, d))])
+
+if not sections:
+    st.warning(f"No hay secciones (IPSI/CONTRA) en `{selected_group}`.")
+    st.stop()
+
+selected_section = st.sidebar.selectbox("Sección:", sections)
+
+SEGM_DIR = os.path.join(group_dir, selected_section)
+METRICS_DIR = os.path.join(METRICS_BASE_DIR, selected_group, selected_section)
 
 # --- Load Config ---
 calib_data = {}
@@ -62,7 +72,6 @@ if not segmented_files:
     st.error(f"No hay imágenes segmentadas en `{SEGM_DIR}`.")
     st.stop()
 
-st.sidebar.header("📂 Selección de Datos")
 selected_file = st.sidebar.selectbox("Archivo Segmentado:", segmented_files)
 base_name = selected_file.replace('_segmented.tif', '')
 
@@ -81,6 +90,10 @@ def load_seg_image(path):
 
 img_stack = load_seg_image(seg_path)
 # 0: AGR, 1: DAPI, 2: WFA, 3: PV, 4: DAPI_Mask, 5: PV_Mask, 6: PNN_Mask
+if img_stack.shape[0] < 7:
+    st.error("La imagen segmentada no tiene los 7 canales esperados.")
+    st.stop()
+    
 wfa_full = img_stack[2]
 dapi_mask = img_stack[4]
 pv_mask = img_stack[5]
@@ -214,9 +227,3 @@ st.info(f"""
 - El número de ramas refleja la complejidad estructural de la PNN.
 - Este análisis individual permite validar la integridad de la red alrededor de la neurona PV+.
 """)
-
-# --- Batch Processing Idea ---
-st.sidebar.divider()
-st.sidebar.subheader("🚀 Próximamente: Batch Skeleton")
-if st.sidebar.button("Exportar Esqueletos de esta muestra (CSV)"):
-    st.sidebar.warning("Funcionalidad en desarrollo para procesar todas las células automáticamente.")
