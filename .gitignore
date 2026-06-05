@@ -1,8 +1,14 @@
 venv/
 .venv/
 *.czi
-*.tif
-*.tiff
 *:Zone*.Identifier
 *.Identifier
-*.TIF
+
+# Ignore heavy raw images
+data/raw/
+
+# Allow tracked processed TIF files (MIPs and segmented masks)
+!data/processed/**/*.tif
+!data/processed/**/*.TIF
+!data/processed/**/*.csv
+!data/processed/**/*.json
