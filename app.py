@@ -61,10 +61,7 @@ calib_data = load_config()
 # Sidebar
 st.sidebar.title("⚙️ Configuración Global")
 
-default_qupath = st.session_state.get('qupath_path', r"C:\Users\danie\AppData\Local\QuPath-0.7.0\QuPath-0.7.0.exe")
-qupath_path = st.sidebar.text_input("Ruta de QuPath.exe (Windows):", value=default_qupath)
-st.session_state['qupath_path'] = qupath_path
-
+st.sidebar.caption("🖼️ Visualizador: Napari (WSL/GUI)")
 st.sidebar.divider()
 st.sidebar.subheader("Parámetros del Pipeline")
 
@@ -72,6 +69,7 @@ with st.sidebar.expander("📏 Calibración de Imagen"):
     px_size = st.number_input("Tamaño de Pixel (µm)", value=float(calib_data.get('pixel_size_um', 1.0)), step=0.001, format="%.4f")
 
 with st.sidebar.expander("🧬 Parámetros Cellpose (DAPI)"):
+    st.caption("⚠️ Canal DAPI: Sólo para referencia visual en overlays/Napari (no cuantificado).")
     filter_options = ["Ninguno", "Otsu Global", "CLAHE (Adaptativo Local)"]
     def_filter = calib_data.get('cellpose_filter_type', "Ninguno")
     dapi_filter = st.selectbox("Filtro previo DAPI", filter_options, index=filter_options.index(def_filter) if def_filter in filter_options else 0)
@@ -88,9 +86,31 @@ with st.sidebar.expander("🧪 Parámetros Cellpose (PV)"):
     pv_prob = st.slider("Cell Prob Threshold (PV)", -6.0, 6.0, float(calib_data.get('pv_cellpose_cellprob_threshold', 0.0)))
 
 with st.sidebar.expander("🕸️ Parámetros PNN (WFA)"):
-    pv_expansion_dist_um = st.number_input("Distancia de expansión desde PV+ (µm)", value=float(calib_data.get('pv_expansion_dist_um', 5.0)), step=1.0)
-    pnn_thresh = st.number_input("Umbral Intensidad WFA", value=float(calib_data.get('pnn_intensity_threshold', 500000.0)), step=10000.0)
-    pnn_excl = st.number_input("Distancia exclusión (µm)", value=float(calib_data.get('pnn_exclusion_distance_um', 15.0)), step=1.0)
+    st.markdown("La detección PV+/PNN+ se realiza por colocalización espacial directa (máxima superficie). No se requiere anillo de expansión.")
+    pv_expansion_dist_um = 0.0
+    pnn_thresh = 0.0
+    pnn_excl = 0.0
+    
+    thresh_methods = ["Automático (Otsu)", "Manual"]
+    def_method = calib_data.get('pnn_wfa_threshold_method', "Automático (Otsu)")
+    pnn_wfa_threshold_method = st.selectbox("Método Umbralado WFA", thresh_methods, index=thresh_methods.index(def_method) if def_method in thresh_methods else 0)
+    pnn_wfa_manual_threshold = st.number_input("Umbral WFA Manual", value=float(calib_data.get('pnn_wfa_manual_threshold', 10000.0)), step=500.0)
+    max_pnn_distance_um = st.number_input("Distancia máx. Voronoi (µm)", value=float(calib_data.get('max_pnn_distance_um', 20.0)), step=1.0)
+    pnn_gaussian_sigma = st.slider("Suavizado Gaussiano WFA (Sigma)", 0.0, 3.0, float(calib_data.get('pnn_gaussian_sigma', 1.0)), step=0.1)
+    
+    # Advanced skeletonization parameters
+    pnn_connect_fragments = st.checkbox("Conectar fragmentos cercanos", value=bool(calib_data.get('pnn_connect_fragments', False)))
+    pnn_connection_radius_um = st.number_input("Radio de conexión (µm)", value=float(calib_data.get('pnn_connection_radius_um', 1.0)), step=0.1)
+    pnn_pruning_min_voxels = st.number_input("Umbral de Poda (vóxeles)", value=int(calib_data.get('pnn_pruning_min_voxels', 0)), step=1)
+    pnn_filter_by_nucleus = st.checkbox("Filtrar por conectividad al soma PV", value=bool(calib_data.get('pnn_filter_by_nucleus', False)))
+
+with st.sidebar.expander("🕸️ Parámetros Cellpose (WFA)"):
+    do_wfa_cp = st.checkbox("Activar segmentación WFA (Cellpose)", value=bool(calib_data.get('do_wfa_cellpose', True)))
+    wfa_cp_def_filter = calib_data.get('wfa_cellpose_filter_type', "Ninguno")
+    wfa_cp_filter = st.selectbox("Filtro WFA Cellpose", filter_options, index=filter_options.index(wfa_cp_def_filter) if wfa_cp_def_filter in filter_options else 0)
+    wfa_cp_diam = st.number_input("Diámetro PNN WFA (px)", value=float(calib_data.get('wfa_cellpose_diameter', 30.0)), step=1.0)
+    wfa_cp_flow = st.slider("Flow Threshold WFA Cellpose", 0.0, 1.0, float(calib_data.get('wfa_cellpose_flow_threshold', 0.4)))
+    wfa_cp_prob = st.slider("Cellprob Threshold WFA Cellpose", -6.0, 6.0, float(calib_data.get('wfa_cellpose_cellprob_threshold', 0.0)))
 
 if st.sidebar.button("💾 Guardar Toda la Configuración"):
     calib_data.update({
@@ -107,6 +127,19 @@ if st.sidebar.button("💾 Guardar Toda la Configuración"):
         'pv_expansion_dist_um': pv_expansion_dist_um,
         'pnn_intensity_threshold': pnn_thresh,
         'pnn_exclusion_distance_um': pnn_excl,
+        'pnn_wfa_threshold_method': pnn_wfa_threshold_method,
+        'pnn_wfa_manual_threshold': pnn_wfa_manual_threshold,
+        'max_pnn_distance_um': max_pnn_distance_um,
+        'pnn_gaussian_sigma': pnn_gaussian_sigma,
+        'pnn_connect_fragments': pnn_connect_fragments,
+        'pnn_connection_radius_um': pnn_connection_radius_um,
+        'pnn_pruning_min_voxels': pnn_pruning_min_voxels,
+        'pnn_filter_by_nucleus': pnn_filter_by_nucleus,
+        'do_wfa_cellpose': do_wfa_cp,
+        'wfa_cellpose_filter_type': wfa_cp_filter,
+        'wfa_cellpose_diameter': wfa_cp_diam,
+        'wfa_cellpose_flow_threshold': wfa_cp_flow,
+        'wfa_cellpose_cellprob_threshold': wfa_cp_prob,
         'channels': ["AGR", "DAPI", "WFA", "PV"]
     })
     save_config(calib_data)
@@ -131,6 +164,8 @@ st.divider()
 
 st.markdown("### 📂 Explorador de Datos Estructural")
 raw_data_path = "data/raw"
+if not os.path.exists(raw_data_path) or not any(os.path.isdir(os.path.join(raw_data_path, d)) for d in os.listdir(raw_data_path) if not d.startswith('.')):
+    raw_data_path = "data/processed/mips"
 
 all_tasks = []
 
@@ -202,6 +237,14 @@ if st.button("▶️ Procesar Todo el Experimento en Batch", type="primary", wid
         'pv_expansion_dist_um': pv_expansion_dist_um,
         'pnn_intensity_threshold': pnn_thresh,
         'pnn_exclusion_distance_um': pnn_excl,
+        'pnn_wfa_threshold_method': pnn_wfa_threshold_method,
+        'pnn_wfa_manual_threshold': pnn_wfa_manual_threshold,
+        'max_pnn_distance_um': max_pnn_distance_um,
+        'pnn_gaussian_sigma': pnn_gaussian_sigma,
+        'pnn_connect_fragments': pnn_connect_fragments,
+        'pnn_connection_radius_um': pnn_connection_radius_um,
+        'pnn_pruning_min_voxels': pnn_pruning_min_voxels,
+        'pnn_filter_by_nucleus': pnn_filter_by_nucleus,
         'channels': ["AGR", "DAPI", "WFA", "PV"]
     })
     save_config(calib_data)

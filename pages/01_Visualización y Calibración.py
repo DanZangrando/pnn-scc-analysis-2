@@ -14,44 +14,20 @@ st.write("Explora las imágenes (crops 2D) y verifica la configuración de canal
 
 # --- Utility Functions ---
 
-def open_in_qupath(wsl_path, qupath_exe):
-    try:
-        win_path = subprocess.check_output(['wslpath', '-w', wsl_path]).decode('utf-8', errors='replace').strip()
-        ps_cmd = f"& '{qupath_exe}' '{win_path}'"
-        
-        process = subprocess.Popen(
-            ['powershell.exe', '-Command', ps_cmd],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding='utf-8',
-            errors='replace'
-        )
-        try:
-            stdout, stderr = process.communicate(timeout=3)
-            if process.returncode != 0:
-                st.error(f"Error de PowerShell: {stderr}")
-                return False
-        except subprocess.TimeoutExpired:
-            pass
-            
-        return True
-    except Exception as e:
-        st.error(f"Error local: {e}")
-        return False
-
 # --- Data Loading ---
 
 RAW_DIR = "data/raw"
+if not os.path.exists(RAW_DIR) or not any(os.path.isdir(os.path.join(RAW_DIR, d)) for d in os.listdir(RAW_DIR) if not d.startswith('.')):
+    RAW_DIR = "data/processed/mips"
 CONFIG_PATH = "experiment_config.json"
 
 if not os.path.exists(RAW_DIR):
-    st.error(f"No se encontró la carpeta `{RAW_DIR}`.")
+    st.error(f"No se encontró la carpeta `{RAW_DIR}` ni `data/processed/mips`.")
     st.stop()
 
 groups = sorted([d for d in os.listdir(RAW_DIR) if os.path.isdir(os.path.join(RAW_DIR, d))])
 if not groups:
-    st.warning("No se detectaron grupos en `data/raw`.")
+    st.warning(f"No se detectaron grupos en `{RAW_DIR}`.")
     st.stop()
 
 st.sidebar.header("📁 Selección de Grupo y Sección")
@@ -142,12 +118,26 @@ for i in range(min(4, num_channels)):
 st.divider()
 
 st.subheader("🖥️ Inspección Externa")
-st.write("Abre la imagen directamente en QuPath.")
-qupath_exe = st.session_state.get('qupath_path', r"C:\Users\danie\AppData\Local\QuPath-0.7.0\QuPath-0.7.0.exe")
+st.write("Abre la imagen original directamente en Napari.")
 
-if st.button("🌌 Abrir Archivo Original en QuPath", type="primary"):
-    if open_in_qupath(selected_path, qupath_exe):
-        st.success("✅ Abriendo TIF en QuPath.")
+if st.button("🧪 Abrir en Napari", type="primary"):
+    import subprocess
+    import sys
+    
+    calib_data = {}
+    if os.path.exists(CONFIG_PATH):
+        with open(CONFIG_PATH, 'r') as f:
+            calib_data = json.load(f)
+    px_size = calib_data.get('pixel_size_um', 1.0)
+    
+    cmd = [sys.executable, "napari_viewer.py", "--path", selected_path, "--pixel_size", str(px_size)]
+    try:
+        env = os.environ.copy()
+        env["NAPARI_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+        subprocess.Popen(cmd, env=env)
+        st.success("✅ Visor Napari lanzado con éxito.")
+    except Exception as e:
+        st.error(f"Error al lanzar Napari: {e}")
 
 st.session_state['selected_file'] = selected_filename
 
