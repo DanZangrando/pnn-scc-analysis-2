@@ -1,8 +1,12 @@
 {
-    "total_dapi": 838,
-    "total_pv_segmentation": 28,
-    "pnn_plus": 9,
-    "pnn_minus": 19,
-    "dapi_pv_coloc": 28,
+    "total_dapi": 3013,
+    "total_pv_segmentation": 132,
+    "pnn_plus": 267,
+    "pnn_minus": 84,
+    "dapi_pv_coloc": 58,
+    "pv_pnn_plus": 58,
+    "pv_pnn_minus": 84,
+    "hollow_pnn_plus": 209,
+    "total_pnn_plus": 267,
     "pixel_size": 0.65
 }
