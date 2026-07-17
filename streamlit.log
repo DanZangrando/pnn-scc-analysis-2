@@ -1,0 +1,805 @@
+2026-07-17 10:07:05.228 Uvicorn server started on :::8501
+
+  You can now view your Streamlit app in your browser.
+
+  Local URL: http://localhost:8501
+  Network URL: http://192.168.134.24:8501
+  External URL: http://164.73.144.113:8501
+
+[31m──[0m[31m────────────────────────[0m[31m [0m[1;31mTraceback [0m[1;2;31m(most recent call last)[0m[31m [0m[31m─────────────────────────[0m[31m──[0m
+[31m [0m [2m/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/strea[0m [31m [0m
+[31m [0m [2mmlit/runtime/scriptrunner/[0m[1mexec_code.py[0m:129 in exec_func_with_error_handling          [31m [0m
+[31m [0m                                                                                      [31m [0m
+[31m [0m [2m/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/strea[0m [31m [0m
+[31m [0m [2mmlit/runtime/scriptrunner/[0m[1mscript_runner.py[0m:793 in code_to_exec                       [31m [0m
+[31m [0m                                                                                      [31m [0m
+[31m [0m [2m/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/strea[0m [31m [0m
+[31m [0m [2mmlit/runtime/scriptrunner/[0m[1mscript_runner.py[0m:170 in _mpa_v1                            [31m [0m
+[31m [0m                                                                                      [31m [0m
+[31m [0m [2m/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/strea[0m [31m [0m
+[31m [0m [2mmlit/navigation/[0m[1mpage.py[0m:490 in run                                                   [31m [0m
+[31m [0m                                                                                      [31m [0m
+[31m [0m [2m/home/histolab/Proyectos/pnn-scc-analysis-2/[0m[1mapp.py[0m:298 in <module>                   [31m [0m
+[31m [0m                                                                                      [31m [0m
+[31m [0m   [2m295 [0m[2m│   [0m                                                                           [31m [0m
+[31m [0m   [2m296 [0m[2m│   [0mst.info([33mf[0m[33m"[0m[33m🔬 Procesando **[0m[33m{[0m[96mlen[0m(tasks_to_run)[33m}[0m[33m** imágenes · Saltando **[0m[33m{[0m[96mlen[0m [31m [0m
+[31m [0m   [2m297 [0m[2m│   [0m                                                                           [31m [0m
+[31m [0m [31m❱ [0m298 [2m│   [0m[94mfrom[0m[90m [0m[4;96mpipeline[0m[90m [0m[94mimport[0m run_pipeline_on_file                                  [31m [0m
+[31m [0m   [2m299 [0m[2m│   [0m[94mfrom[0m[90m [0m[4;96mcellpose[0m[90m [0m[94mimport[0m models                                                [31m [0m
+[31m [0m   [2m300 [0m[2m│   [0m[94mimport[0m[90m [0m[4;96mtorch[0m                                                               [31m [0m
+[31m [0m   [2m301 [0m[2m│   [0m[94mimport[0m[90m [0m[4;96msys[0m                                                                 [31m [0m
+[31m [0m                                                                                      [31m [0m
+[31m [0m [2m/home/histolab/Proyectos/pnn-scc-analysis-2/[0m[1mpipeline.py[0m:20 in <module>               [31m [0m
+[31m [0m                                                                                      [31m [0m
+[31m [0m   [2m 17 [0msys.path.append(os.path.abspath([33m"[0m[33msrc[0m[33m"[0m))                                        [31m [0m
+[31m [0m   [2m 18 [0msys.path.append(os.path.abspath([33m"[0m[33msrc/counting_perineuronal_nets[0m[33m"[0m))             [31m [0m
+[31m [0m   [2m 19 [0m                                                                               [31m [0m
+[31m [0m [31m❱ [0m 20 [94mfrom[0m[90m [0m[4;96mdatasets[0m[4;96m.[0m[4;96mpatched_datasets[0m[90m [0m[94mimport[0m PatchedMultiImageDataset                 [31m [0m
+[31m [0m   [2m 21 [0m[94mfrom[0m[90m [0m[4;96mmethods[0m[4;96m.[0m[4;96mdetection[0m[4;96m.[0m[4;96mtrain_fn[0m[90m [0m[94mimport[0m predict_points                          [31m [0m
+[31m [0m   [2m 22 [0m[94mfrom[0m[90m [0m[4;96momegaconf[0m[90m [0m[94mimport[0m OmegaConf                                                [31m [0m
+[31m [0m   [2m 23 [0m[94mfrom[0m[90m [0m[4;96mtorch[0m[4;96m.[0m[4;96mutils[0m[4;96m.[0m[4;96mdata[0m[90m [0m[94mimport[0m DataLoader                                        [31m [0m
+[31m [0m                                                                                      [31m [0m
+[31m [0m [2m/home/histolab/Proyectos/pnn-scc-analysis-2/src/counting_perineuronal_nets/datasets/[0m [31m [0m
+[31m [0m [1m__init__.py[0m:2 in <module>                                                            [31m [0m
+[31m [0m                                                                                      [31m [0m
+[31m [0m   [2m1 [0m[94mfrom[0m[90m [0m[4;96m.[0m[4;96mPerineuronalNetsDataset[0m[90m [0m[94mimport[0m PerineuronalNetsDataset                     [31m [0m
+[31m [0m [31m❱ [0m2 [94mfrom[0m[90m [0m[4;96m.[0m[4;96mPerineuronalNetsRankDataset[0m[90m [0m[94mimport[0m PerineuronalNetsRankDataset             [31m [0m
+[31m [0m   [2m3 [0m[94mfrom[0m[90m [0m[4;96m.[0m[4;96mCellsDataset[0m[90m [0m[94mimport[0m CellsDataset                                           [31m [0m
+[31m [0m   [2m4 [0m                                                                                 [31m [0m
+[31m [0m   [2m5 [0m                                                                                 [31m [0m
+[31m [0m                                                                                      [31m [0m
+[31m [0m [2m/home/histolab/Proyectos/pnn-scc-analysis-2/src/counting_perineuronal_nets/datasets/[0m [31m [0m
+[31m [0m [1mPerineuronalNetsRankDataset.py[0m:6 in <module>                                         [31m [0m
+[31m [0m                                                                                      [31m [0m
+[31m [0m   [2m  3 [0m[94mimport[0m[90m [0m[4;96mnumpy[0m[90m [0m[94mas[0m[90m [0m[4;96mnp[0m                                                             [31m [0m
+[31m [0m   [2m  4 [0m[94mimport[0m[90m [0m[4;96mpandas[0m[90m [0m[94mas[0m[90m [0m[4;96mpd[0m                                                            [31m [0m
+[31m [0m   [2m  5 [0m[94mfrom[0m[90m [0m[4;96mscipy[0m[4;96m.[0m[4;96mspatial[0m[4;96m.[0m[4;96mdistance[0m[90m [0m[94mimport[0m cdist                                       [31m [0m
+[31m [0m [31m❱ [0m  6 [94mfrom[0m[90m [0m[4;96msklearn[0m[4;96m.[0m[4;96mmodel_selection[0m[90m [0m[94mimport[0m train_test_split                           [31m [0m
+[31m [0m   [2m  7 [0m[94mfrom[0m[90m [0m[4;96mtorch[0m[4;96m.[0m[4;96mutils[0m[4;96m.[0m[4;96mdata[0m[90m [0m[94mimport[0m Dataset                                           [31m [0m
+[31m [0m   [2m  8 [0m                                                                               [31m [0m
+[31m [0m   [2m  9 [0m[94mfrom[0m[90m [0m[4;96mdatasets[0m[4;96m.[0m[4;96mpatched_datasets[0m[90m [0m[94mimport[0m RandomAccessImageDataset, RandomAccessMu [31m [0m
+[31m────────────────────────────────────────────────────────────────────────────────────────[0m
+[1;91mModuleNotFoundError: [0mNo module named [32m'sklearn'[0m
+/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/torchvision/models/_utils.py:135: UserWarning: Using 'backbone_name' and 'weights' as positional parameter(s) is deprecated since 0.13 and may be removed in the future. Please use keyword parameter(s) instead.
+  warnings.warn(
+/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/torchvision/models/_utils.py:222: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=None`.
+  warnings.warn(msg)
+/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/cellpose/dynamics.py:541: UserWarning: Sparse invariant checks are implicitly disabled. Memory errors (e.g. SEGFAULT) will occur when operating on a sparse tensor which violates the invariants, but checks incur performance overhead. To silence this warning, explicitly opt in or out. See `torch.sparse.check_sparse_tensor_invariants.__doc__` for guidance.  (Triggered internally at /__w/pytorch/pytorch/aten/src/ATen/Context.cpp:816.)
+  coo = torch.sparse_coo_tensor(pt, torch.ones(pt.shape[1], device=pt.device, dtype=torch.int),
+PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 22%|██▏       | 2/9 [00:00<00:00, 18.41it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  5.32it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 73.69it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.28it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 82.90it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.98it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 84.04it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.99it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 83.47it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.03it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 74.67it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.39it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 85.17it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.22it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 85.37it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.24it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 74.60it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.33it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 78.98it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.64it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 84.67it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.21it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 86.70it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.39it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 84.50it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.16it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 82.03it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.79it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 83.48it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.93it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 76.27it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.37it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 87.92it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.55it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 85.18it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.24it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 82.36it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.93it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 84.61it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.95it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 77.93it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.72it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 84.15it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.10it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 78.44it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.77it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 84.33it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.14it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 85.88it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.15it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 86.15it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.31it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 78%|███████▊  | 7/9 [00:00<00:00, 65.63it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  7.78it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 84.08it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.11it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 79.66it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.89it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 85.43it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.28it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 83.13it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.02it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 74.15it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.32it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 82.48it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.96it/s]                                                             Cargando imagen: data/processed/segmented/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1_masks.tif (Paso: wfa)
+Estructura cargada: (4, 1092, 1260) con 4 canales.
+Detectado archivo de máscaras. Cargando canales biológicos de: data/processed/mips/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1.TIF
+Cargando mapa de probabilidad PNNloc: data/processed/segmented/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1_prob_map.tif
+Traceback (most recent call last):
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_qt/__init__.py", line 6, in <module>
+    from qtpy import API_NAME, QtCore
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/qtpy/__init__.py", line 293, in <module>
+    raise QtBindingsNotFoundError from None
+qtpy.QtBindingsNotFoundError: No Qt bindings could be found
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/napari_viewer.py", line 304, in <module>
+    main()
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/napari_viewer.py", line 301, in main
+    napari.run()
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_event_loop.py", line 15, in run
+    raise exc
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_event_loop.py", line 2, in <module>
+    from napari._qt.qt_event_loop import run
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_qt/__init__.py", line 71, in <module>
+    raise ImportError(
+ImportError: No Qt bindings could be found for napari==0.7.1.
+
+napari requires either PyQt5, PyQt6 (default) or PySide6 to be installed in the environment.
+
+With pip, you can install either with:
+  $ pip install -U 'napari[all]'  # default choice
+  $ pip install -U 'napari[pyqt5]'
+  $ pip install -U 'napari[pyqt6]'
+  $ pip install -U 'napari[pyside6]'
+
+With conda, you need to do:
+  $ conda install -c conda-forge pyqt6
+  $ conda install -c conda-forge pyside6
+
+Our heuristics suggest you are using '2' to manage your packages.
+Cargando imagen: data/processed/segmented/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1_masks.tif (Paso: all)
+Estructura cargada: (4, 1092, 1260) con 4 canales.
+Detectado archivo de máscaras. Cargando canales biológicos de: data/processed/mips/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1.TIF
+Cargando mapa de probabilidad PNNloc: data/processed/segmented/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1_prob_map.tif
+Traceback (most recent call last):
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_qt/__init__.py", line 6, in <module>
+    from qtpy import API_NAME, QtCore
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/qtpy/__init__.py", line 293, in <module>
+    raise QtBindingsNotFoundError from None
+qtpy.QtBindingsNotFoundError: No Qt bindings could be found
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/napari_viewer.py", line 304, in <module>
+    main()
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/napari_viewer.py", line 301, in main
+    napari.run()
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_event_loop.py", line 15, in run
+    raise exc
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_event_loop.py", line 2, in <module>
+    from napari._qt.qt_event_loop import run
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_qt/__init__.py", line 71, in <module>
+    raise ImportError(
+ImportError: No Qt bindings could be found for napari==0.7.1.
+
+napari requires either PyQt5, PyQt6 (default) or PySide6 to be installed in the environment.
+
+With pip, you can install either with:
+  $ pip install -U 'napari[all]'  # default choice
+  $ pip install -U 'napari[pyqt5]'
+  $ pip install -U 'napari[pyqt6]'
+  $ pip install -U 'napari[pyside6]'
+
+With conda, you need to do:
+  $ conda install -c conda-forge pyqt6
+  $ conda install -c conda-forge pyside6
+
+Our heuristics suggest you are using '2' to manage your packages.
+Cargando imagen: data/processed/segmented/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1_masks.tif (Paso: all)
+Estructura cargada: (4, 1092, 1260) con 4 canales.
+Detectado archivo de máscaras. Cargando canales biológicos de: data/processed/mips/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1.TIF
+Cargando mapa de probabilidad PNNloc: data/processed/segmented/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1_prob_map.tif
+Traceback (most recent call last):
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_qt/__init__.py", line 6, in <module>
+    from qtpy import API_NAME, QtCore
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/qtpy/__init__.py", line 293, in <module>
+    raise QtBindingsNotFoundError from None
+qtpy.QtBindingsNotFoundError: No Qt bindings could be found
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/napari_viewer.py", line 304, in <module>
+    main()
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/napari_viewer.py", line 301, in main
+    napari.run()
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_event_loop.py", line 15, in run
+    raise exc
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_event_loop.py", line 2, in <module>
+    from napari._qt.qt_event_loop import run
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_qt/__init__.py", line 71, in <module>
+    raise ImportError(
+ImportError: No Qt bindings could be found for napari==0.7.1.
+
+napari requires either PyQt5, PyQt6 (default) or PySide6 to be installed in the environment.
+
+With pip, you can install either with:
+  $ pip install -U 'napari[all]'  # default choice
+  $ pip install -U 'napari[pyqt5]'
+  $ pip install -U 'napari[pyqt6]'
+  $ pip install -U 'napari[pyside6]'
+
+With conda, you need to do:
+  $ conda install -c conda-forge pyqt6
+  $ conda install -c conda-forge pyside6
+
+Our heuristics suggest you are using '2' to manage your packages.
+Cargando imagen: data/processed/segmented/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1_masks.tif (Paso: all)
+Estructura cargada: (4, 1092, 1260) con 4 canales.
+Detectado archivo de máscaras. Cargando canales biológicos de: data/processed/mips/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1.TIF
+Cargando mapa de probabilidad PNNloc: data/processed/segmented/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1_prob_map.tif
+Traceback (most recent call last):
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_qt/__init__.py", line 6, in <module>
+    from qtpy import API_NAME, QtCore
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/qtpy/__init__.py", line 293, in <module>
+    raise QtBindingsNotFoundError from None
+qtpy.QtBindingsNotFoundError: No Qt bindings could be found
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/napari_viewer.py", line 304, in <module>
+    main()
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/napari_viewer.py", line 301, in main
+    napari.run()
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_event_loop.py", line 15, in run
+    raise exc
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_event_loop.py", line 2, in <module>
+    from napari._qt.qt_event_loop import run
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_qt/__init__.py", line 71, in <module>
+    raise ImportError(
+ImportError: No Qt bindings could be found for napari==0.7.1.
+
+napari requires either PyQt5, PyQt6 (default) or PySide6 to be installed in the environment.
+
+With pip, you can install either with:
+  $ pip install -U 'napari[all]'  # default choice
+  $ pip install -U 'napari[pyqt5]'
+  $ pip install -U 'napari[pyqt6]'
+  $ pip install -U 'napari[pyside6]'
+
+With conda, you need to do:
+  $ conda install -c conda-forge pyqt6
+  $ conda install -c conda-forge pyside6
+
+Our heuristics suggest you are using '2' to manage your packages.
+Cargando imagen: data/processed/segmented/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1_masks.tif (Paso: all)
+Estructura cargada: (4, 1092, 1260) con 4 canales.
+Detectado archivo de máscaras. Cargando canales biológicos de: data/processed/mips/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1.TIF
+Cargando mapa de probabilidad PNNloc: data/processed/segmented/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1_prob_map.tif
+Traceback (most recent call last):
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_qt/__init__.py", line 6, in <module>
+    from qtpy import API_NAME, QtCore
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/qtpy/__init__.py", line 293, in <module>
+    raise QtBindingsNotFoundError from None
+qtpy.QtBindingsNotFoundError: No Qt bindings could be found
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/napari_viewer.py", line 304, in <module>
+    main()
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/napari_viewer.py", line 301, in main
+    napari.run()
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_event_loop.py", line 15, in run
+    raise exc
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_event_loop.py", line 2, in <module>
+    from napari._qt.qt_event_loop import run
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_qt/__init__.py", line 71, in <module>
+    raise ImportError(
+ImportError: No Qt bindings could be found for napari==0.7.1.
+
+napari requires either PyQt5, PyQt6 (default) or PySide6 to be installed in the environment.
+
+With pip, you can install either with:
+  $ pip install -U 'napari[all]'  # default choice
+  $ pip install -U 'napari[pyqt5]'
+  $ pip install -U 'napari[pyqt6]'
+  $ pip install -U 'napari[pyside6]'
+
+With conda, you need to do:
+  $ conda install -c conda-forge pyqt6
+  $ conda install -c conda-forge pyside6
+
+Our heuristics suggest you are using '2' to manage your packages.
+Cargando imagen: data/processed/segmented/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1_masks.tif (Paso: all)
+Estructura cargada: (4, 1092, 1260) con 4 canales.
+Detectado archivo de máscaras. Cargando canales biológicos de: data/processed/mips/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1.TIF
+Cargando mapa de probabilidad PNNloc: data/processed/segmented/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1_prob_map.tif
+Traceback (most recent call last):
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_qt/__init__.py", line 6, in <module>
+    from qtpy import API_NAME, QtCore
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/qtpy/__init__.py", line 293, in <module>
+    raise QtBindingsNotFoundError from None
+qtpy.QtBindingsNotFoundError: No Qt bindings could be found
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/napari_viewer.py", line 304, in <module>
+    main()
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/napari_viewer.py", line 301, in main
+    napari.run()
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_event_loop.py", line 15, in run
+    raise exc
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_event_loop.py", line 2, in <module>
+    from napari._qt.qt_event_loop import run
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_qt/__init__.py", line 71, in <module>
+    raise ImportError(
+ImportError: No Qt bindings could be found for napari==0.7.1.
+
+napari requires either PyQt5, PyQt6 (default) or PySide6 to be installed in the environment.
+
+With pip, you can install either with:
+  $ pip install -U 'napari[all]'  # default choice
+  $ pip install -U 'napari[pyqt5]'
+  $ pip install -U 'napari[pyqt6]'
+  $ pip install -U 'napari[pyside6]'
+
+With conda, you need to do:
+  $ conda install -c conda-forge pyqt6
+  $ conda install -c conda-forge pyside6
+
+Our heuristics suggest you are using '2' to manage your packages.
+Cargando imagen: data/processed/segmented/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1_masks.tif (Paso: all)
+Estructura cargada: (4, 1092, 1260) con 4 canales.
+Detectado archivo de máscaras. Cargando canales biológicos de: data/processed/mips/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1.TIF
+Cargando mapa de probabilidad PNNloc: data/processed/segmented/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1_prob_map.tif
+Traceback (most recent call last):
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_qt/__init__.py", line 6, in <module>
+    from qtpy import API_NAME, QtCore
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/qtpy/__init__.py", line 293, in <module>
+    raise QtBindingsNotFoundError from None
+qtpy.QtBindingsNotFoundError: No Qt bindings could be found
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/napari_viewer.py", line 304, in <module>
+    main()
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/napari_viewer.py", line 301, in main
+    napari.run()
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_event_loop.py", line 15, in run
+    raise exc
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_event_loop.py", line 2, in <module>
+    from napari._qt.qt_event_loop import run
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_qt/__init__.py", line 71, in <module>
+    raise ImportError(
+ImportError: No Qt bindings could be found for napari==0.7.1.
+
+napari requires either PyQt5, PyQt6 (default) or PySide6 to be installed in the environment.
+
+With pip, you can install either with:
+  $ pip install -U 'napari[all]'  # default choice
+  $ pip install -U 'napari[pyqt5]'
+  $ pip install -U 'napari[pyqt6]'
+  $ pip install -U 'napari[pyside6]'
+
+With conda, you need to do:
+  $ conda install -c conda-forge pyqt6
+  $ conda install -c conda-forge pyside6
+
+Our heuristics suggest you are using '2' to manage your packages.
+Cargando imagen: data/processed/segmented/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1_masks.tif (Paso: wfa)
+Estructura cargada: (4, 1092, 1260) con 4 canales.
+Detectado archivo de máscaras. Cargando canales biológicos de: data/processed/mips/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1.TIF
+Cargando mapa de probabilidad PNNloc: data/processed/segmented/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1_prob_map.tif
+Traceback (most recent call last):
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_qt/__init__.py", line 6, in <module>
+    from qtpy import API_NAME, QtCore
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/qtpy/__init__.py", line 293, in <module>
+    raise QtBindingsNotFoundError from None
+qtpy.QtBindingsNotFoundError: No Qt bindings could be found
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/napari_viewer.py", line 304, in <module>
+    main()
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/napari_viewer.py", line 301, in main
+    napari.run()
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_event_loop.py", line 15, in run
+    raise exc
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_event_loop.py", line 2, in <module>
+    from napari._qt.qt_event_loop import run
+  File "/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/napari/_qt/__init__.py", line 71, in <module>
+    raise ImportError(
+ImportError: No Qt bindings could be found for napari==0.7.1.
+
+napari requires either PyQt5, PyQt6 (default) or PySide6 to be installed in the environment.
+
+With pip, you can install either with:
+  $ pip install -U 'napari[all]'  # default choice
+  $ pip install -U 'napari[pyqt5]'
+  $ pip install -U 'napari[pyqt6]'
+  $ pip install -U 'napari[pyside6]'
+
+With conda, you need to do:
+  $ conda install -c conda-forge pyqt6
+  $ conda install -c conda-forge pyside6
+
+Our heuristics suggest you are using '2' to manage your packages.
+/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/torchvision/models/_utils.py:135: UserWarning: Using 'backbone_name' and 'weights' as positional parameter(s) is deprecated since 0.13 and may be removed in the future. Please use keyword parameter(s) instead.
+  warnings.warn(
+/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/torchvision/models/_utils.py:222: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=None`.
+  warnings.warn(msg)
+PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 86.70it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.41it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 78%|███████▊  | 7/9 [00:00<00:00, 69.59it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.17it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 78%|███████▊  | 7/9 [00:00<00:00, 67.96it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.00it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 86.95it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.29it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 83.07it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.00it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 78.42it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.74it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 78%|███████▊  | 7/9 [00:00<00:00, 68.06it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  7.94it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 78.87it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.70it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 82.35it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.90it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 86.20it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.34it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 83.31it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.02it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 78.92it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.78it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 85.38it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.26it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 78.16it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.65it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 86.04it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.34it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 83.04it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.00it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 85.84it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.31it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 75.74it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.52it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 84.53it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.12it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 83.58it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.01it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 85.46it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.27it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 82.70it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.98it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 74.19it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  7.83it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 78.40it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.77it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 79.21it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.83it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 83.55it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.07it/s]                                                             Cargando imagen: data/processed/segmented/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1_masks.tif (Paso: all)
+Estructura cargada: (4, 1092, 1260) con 4 canales.
+Detectado archivo de máscaras. Cargando canales biológicos de: data/processed/mips/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1.TIF
+Cargando mapa de probabilidad PNNloc: data/processed/segmented/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1_prob_map.tif
+/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/torchvision/models/_utils.py:135: UserWarning: Using 'backbone_name' and 'weights' as positional parameter(s) is deprecated since 0.13 and may be removed in the future. Please use keyword parameter(s) instead.
+  warnings.warn(
+/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/torchvision/models/_utils.py:222: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=None`.
+  warnings.warn(msg)
+PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 85.12it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.23it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 84.47it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.16it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 83.53it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.05it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 86.95it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.44it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 83.59it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.08it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 86.74it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.39it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 78%|███████▊  | 7/9 [00:00<00:00, 69.98it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.25it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 83.84it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.09it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 86.48it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.35it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 84.01it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.11it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 89.46it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.70it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 86.86it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.42it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 85.95it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.28it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 87.77it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.53it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 88.02it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.53it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 86.23it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.38it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 86.69it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.41it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 88.17it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.55it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 86.93it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.42it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 75.46it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.17it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 79.37it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.89it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 75.72it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.52it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 88.16it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.53it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 85.93it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.32it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 78.98it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.85it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 86.44it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.39it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 73.66it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.32it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 87.15it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.45it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 87.85it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.51it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 85.70it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.30it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 87.42it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.48it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 77.85it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.67it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 75.06it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.42it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 86.85it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.42it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 85.56it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.25it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 84.70it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.16it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 83.52it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.06it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 89.17it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.61it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 84.76it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.19it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 84.63it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.17it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 79.05it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.85it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 78.72it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.77it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 82.71it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.97it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 84.81it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.20it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+                                     [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.78it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 83.85it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.10it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 78.68it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.62it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 75.18it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.21it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 84.83it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.20it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 79.18it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.79it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 85.38it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.27it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 86.01it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.30it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 78.15it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.70it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 83.58it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.04it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 84.58it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.17it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 89.19it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.64it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 83.30it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.91it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 86.40it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.38it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 78.24it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.72it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 78.32it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.75it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 89.85it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.71it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 87.79it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.46it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 86.13it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.33it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 88.58it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.61it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 82.84it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.99it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 76.10it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.54it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 85.78it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.33it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 84.73it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.17it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 78%|███████▊  | 7/9 [00:00<00:00, 68.96it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.03it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 88.38it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.56it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 83.61it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.07it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 84.33it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.13it/s]                                                             Cargando imagen: data/processed/segmented/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1_masks.tif (Paso: all)
+Estructura cargada: (4, 1092, 1260) con 4 canales.
+Detectado archivo de máscaras. Cargando canales biológicos de: data/processed/mips/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1.TIF
+Cargando mapa de probabilidad PNNloc: data/processed/segmented/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1_prob_map.tif
+/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/torchvision/models/_utils.py:135: UserWarning: Using 'backbone_name' and 'weights' as positional parameter(s) is deprecated since 0.13 and may be removed in the future. Please use keyword parameter(s) instead.
+  warnings.warn(
+/home/histolab/Proyectos/pnn-scc-analysis-2/.venv/lib/python3.10/site-packages/torchvision/models/_utils.py:222: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=None`.
+  warnings.warn(msg)
+PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+ 89%|████████▉ | 8/9 [00:00<00:00, 78.51it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  8.68it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 87.08it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.44it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 84.98it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.21it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
+  0%|          | 0/9 [00:00<?, ?it/s][A
+100%|██████████| 9/9 [00:00<00:00, 87.21it/s][A
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.44it/s]                                                             

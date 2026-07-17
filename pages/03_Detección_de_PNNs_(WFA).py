@@ -111,7 +111,7 @@ tile_overlap = st.sidebar.slider("Overlap entre tiles (px)", 16, 128, int(calib_
 px_size = float(calib_data.get('pixel_size_um', 1.0))
 
 st.sidebar.markdown("---")
-run_btn = st.sidebar.button("🧠 Detectar PNNs (WFA)", type="primary", use_container_width=True)
+run_btn = st.sidebar.button("🧠 Detectar PNNs (WFA)", type="primary", width="stretch")
 
 base_fn, _ = os.path.splitext(selected_filename)
 seg_file = os.path.join(SEGM_DIR, f"{base_fn}_masks.tif")
@@ -570,7 +570,7 @@ if os.path.exists(candidates_file):
             
             col_img, col_info = st.columns([1, 1])
             with col_img:
-                st.image(wfa_rgb, caption="Cuadro verde/rojo indica clasificación PNNscore en WFA.", use_container_width=True)
+                st.image(wfa_rgb, caption="Cuadro verde/rojo indica clasificación PNNscore en WFA.", width="stretch")
             with col_info:
                 st.markdown(f"""
                 * **ID Candidato:** {selected_cand_id}
@@ -617,6 +617,6 @@ if os.path.exists(csv_file):
                 st.write(f"De las PNNs detectadas, **{summary_data.get('pv_pnn_plus', 0)}** colocalizan con interneuronas (PV+/PNN+) y **{summary_data.get('hollow_pnn_plus', 0)}** son huecas (PV-/PNN+).")
             
             st.markdown("### Tabla de Métricas de PNN+:")
-            st.dataframe(df_pnn.head(100), use_container_width=True)
+            st.dataframe(df_pnn.head(100))
     except Exception as e:
         st.warning(f"Error al cargar descriptores de PNN+: {e}")

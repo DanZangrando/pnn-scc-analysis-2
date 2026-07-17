@@ -61,7 +61,7 @@ calib_data = load_config()
 # Sidebar
 st.sidebar.title("⚙️ Configuración Global")
 
-st.sidebar.caption("🖼️ Visualizador: Napari (WSL/GUI)")
+st.sidebar.caption("🖼️ Visualizador: Napari (Local/GUI)")
 st.sidebar.divider()
 st.sidebar.subheader("Parámetros del Pipeline")
 
@@ -394,8 +394,7 @@ if st.button("▶️ Procesar Todo el Experimento en Batch", type="primary", key
 
         # Update live results table
         result_table.dataframe(
-            pd.DataFrame(results_log),
-            use_container_width=True
+            pd.DataFrame(results_log)
         )
 
     # Final summary

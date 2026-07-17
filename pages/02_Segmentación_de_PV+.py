@@ -107,7 +107,7 @@ pv_prob = st.slider("Cell Prob Threshold PV", -6.0, 6.0, float(calib_data.get('p
 px_size = float(calib_data.get('pixel_size_um', 1.0))
 
 st.sidebar.markdown("---")
-run_btn = st.sidebar.button("🔬 Segmentar Canal PV+", type="primary", use_container_width=True)
+run_btn = st.sidebar.button("🔬 Segmentar Canal PV+", type="primary", width="stretch")
 
 base_fn, _ = os.path.splitext(selected_filename)
 seg_file = os.path.join(SEGM_DIR, f"{base_fn}_masks.tif")
@@ -376,6 +376,6 @@ if os.path.exists(csv_file):
                 st.write(f"De las interneuronas PV+, **{summary_data.get('pv_pnn_plus', 0)}** tienen red perineuronal (PV+/PNN+) y **{summary_data.get('pv_pnn_minus', 0)}** no tienen red (PV+/PNN-).")
             
             st.markdown("### Tabla de Métricas de PV+:")
-            st.dataframe(df_pv.head(100), use_container_width=True)
+            st.dataframe(df_pv.head(100))
     except Exception as e:
         st.warning(f"Error al cargar los descriptores: {e}")

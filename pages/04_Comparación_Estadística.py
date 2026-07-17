@@ -389,7 +389,7 @@ def run_stats_layout(df_base, var_options, selected_var_key, title_lbl):
                 yaxis=dict(range=[0, y_max * 1.35])
             )
             with sex_cols[col_idx]:
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig)
                 st.markdown('<div class="stats-box">', unsafe_allow_html=True)
                 for cond in cond_list:
                     vals = cond_data[cond]
@@ -398,7 +398,7 @@ def run_stats_layout(df_base, var_options, selected_var_key, title_lbl):
 
         if all_pairwise_results:
             st.write("### Tabla de Significancias")
-            st.dataframe(pd.DataFrame(all_pairwise_results), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(all_pairwise_results), hide_index=True)
 
     else:
         # IPSI vs CONTRA Mode
@@ -438,11 +438,11 @@ def run_stats_layout(df_base, var_options, selected_var_key, title_lbl):
                         marker=dict(size=9)
                     ))
                 fig.update_layout(title="Pareado IPSI ↔ CONTRA por Sujeto", template='plotly_dark', height=450)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig)
             else:
                 df_plot = df_base[df_base[factor_col].isin([cat_a, cat_b])]
                 fig = px.box(df_plot, x=factor_col, y=selected_var_key, color=factor_col, points='all', template='plotly_dark')
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig)
 
         with col_stats:
             st.markdown('<div class="stats-box">', unsafe_allow_html=True)

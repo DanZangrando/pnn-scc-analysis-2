@@ -1,12 +1,12 @@
 {
-    "total_dapi": 4524,
-    "total_pv_segmentation": 360,
-    "pnn_plus": 226,
-    "pnn_minus": 256,
-    "dapi_pv_coloc": 117,
-    "pv_pnn_plus": 117,
-    "pv_pnn_minus": 256,
-    "hollow_pnn_plus": 109,
-    "total_pnn_plus": 226,
+    "total_dapi": 4144,
+    "total_pv_segmentation": 194,
+    "pnn_plus": 173,
+    "pnn_minus": 104,
+    "dapi_pv_coloc": 92,
+    "pv_pnn_plus": 92,
+    "pv_pnn_minus": 104,
+    "hollow_pnn_plus": 81,
+    "total_pnn_plus": 173,
     "pixel_size": 0.65
 }

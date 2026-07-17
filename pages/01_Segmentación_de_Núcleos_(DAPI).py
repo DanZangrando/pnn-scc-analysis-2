@@ -108,7 +108,7 @@ px_size = float(calib_data.get('pixel_size_um', 1.0))
 pnn_radius_um = float(calib_data.get('pnn_radius_um', 20.0))
 
 st.sidebar.markdown("---")
-run_btn = st.sidebar.button("🔬 Segmentar Canal DAPI", type="primary", use_container_width=True)
+run_btn = st.sidebar.button("🔬 Segmentar Canal DAPI", type="primary", width="stretch")
 
 base_fn, _ = os.path.splitext(selected_filename)
 seg_file = os.path.join(SEGM_DIR, f"{base_fn}_masks.tif")
@@ -264,6 +264,6 @@ if os.path.exists(dapi_csv_file):
             c_m3.metric("Diámetro Promedio (µm)", f"{df_dapi['diameter_um'].mean():.2f}")
             
             st.markdown("### Tabla de Métricas de DAPI:")
-            st.dataframe(df_dapi.head(100), use_container_width=True)
+            st.dataframe(df_dapi.head(100))
     except Exception as e:
         st.warning(f"Error al cargar los descriptores: {e}")
