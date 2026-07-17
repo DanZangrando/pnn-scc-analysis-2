@@ -13,8 +13,8 @@
     "cellpose_cellprob_threshold": 0.1,
     "pv_cellpose_filter_type": "CLAHE (Adaptativo Local)",
     "pv_cellpose_diameter": 5.0,
-    "pv_cellpose_flow_threshold": 0.7,
-    "pv_cellpose_cellprob_threshold": -0.34,
+    "pv_cellpose_flow_threshold": 0.4,
+    "pv_cellpose_cellprob_threshold": 0.1,
     "pnn_radius_um": 0.0,
     "pnn_intensity_threshold": 0.0,
     "pnn_exclusion_distance_um": 0.0,
@@ -32,5 +32,9 @@
     "wfa_cellpose_filter_type": "Otsu Global",
     "wfa_cellpose_diameter": 5.0,
     "wfa_cellpose_flow_threshold": 0.7,
-    "wfa_cellpose_cellprob_threshold": 0.0
+    "wfa_cellpose_cellprob_threshold": 0.0,
+    "lupori_loc_threshold": 0.2,
+    "lupori_score_threshold": 0.3,
+    "lupori_tile_size": 1024,
+    "lupori_tile_overlap": 32
 }

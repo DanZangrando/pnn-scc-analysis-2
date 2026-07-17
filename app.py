@@ -85,32 +85,12 @@ with st.sidebar.expander("🧪 Parámetros Cellpose (PV)"):
     pv_flow = st.slider("Flow Threshold (PV)", 0.0, 1.0, float(calib_data.get('pv_cellpose_flow_threshold', 0.4)))
     pv_prob = st.slider("Cell Prob Threshold (PV)", -6.0, 6.0, float(calib_data.get('pv_cellpose_cellprob_threshold', 0.0)))
 
-with st.sidebar.expander("🕸️ Parámetros PNN (WFA)"):
-    st.markdown("La detección PV+/PNN+ se realiza por colocalización espacial directa (máxima superficie). No se requiere anillo de expansión.")
-    pv_expansion_dist_um = 0.0
-    pnn_thresh = 0.0
-    pnn_excl = 0.0
-    
-    thresh_methods = ["Automático (Otsu)", "Manual"]
-    def_method = calib_data.get('pnn_wfa_threshold_method', "Automático (Otsu)")
-    pnn_wfa_threshold_method = st.selectbox("Método Umbralado WFA", thresh_methods, index=thresh_methods.index(def_method) if def_method in thresh_methods else 0)
-    pnn_wfa_manual_threshold = st.number_input("Umbral WFA Manual", value=float(calib_data.get('pnn_wfa_manual_threshold', 10000.0)), step=500.0)
-    max_pnn_distance_um = st.number_input("Distancia máx. Voronoi (µm)", value=float(calib_data.get('max_pnn_distance_um', 20.0)), step=1.0)
-    pnn_gaussian_sigma = st.slider("Suavizado Gaussiano WFA (Sigma)", 0.0, 3.0, float(calib_data.get('pnn_gaussian_sigma', 1.0)), step=0.1)
-    
-    # Advanced skeletonization parameters
-    pnn_connect_fragments = st.checkbox("Conectar fragmentos cercanos", value=bool(calib_data.get('pnn_connect_fragments', False)))
-    pnn_connection_radius_um = st.number_input("Radio de conexión (µm)", value=float(calib_data.get('pnn_connection_radius_um', 1.0)), step=0.1)
-    pnn_pruning_min_voxels = st.number_input("Umbral de Poda (vóxeles)", value=int(calib_data.get('pnn_pruning_min_voxels', 0)), step=1)
-    pnn_filter_by_nucleus = st.checkbox("Filtrar por conectividad al soma PV", value=bool(calib_data.get('pnn_filter_by_nucleus', False)))
-
-with st.sidebar.expander("🕸️ Parámetros Cellpose (WFA)"):
-    do_wfa_cp = st.checkbox("Activar segmentación WFA (Cellpose)", value=bool(calib_data.get('do_wfa_cellpose', True)))
-    wfa_cp_def_filter = calib_data.get('wfa_cellpose_filter_type', "Ninguno")
-    wfa_cp_filter = st.selectbox("Filtro WFA Cellpose", filter_options, index=filter_options.index(wfa_cp_def_filter) if wfa_cp_def_filter in filter_options else 0)
-    wfa_cp_diam = st.number_input("Diámetro PNN WFA (px)", value=float(calib_data.get('wfa_cellpose_diameter', 30.0)), step=1.0)
-    wfa_cp_flow = st.slider("Flow Threshold WFA Cellpose", 0.0, 1.0, float(calib_data.get('wfa_cellpose_flow_threshold', 0.4)))
-    wfa_cp_prob = st.slider("Cellprob Threshold WFA Cellpose", -6.0, 6.0, float(calib_data.get('wfa_cellpose_cellprob_threshold', 0.0)))
+with st.sidebar.expander("🧠 Parámetros PNNloc / PNNscore"):
+    st.markdown("Detección de PNNs mediante modelos de Deep Learning (Faster R-CNN y ConvNet).")
+    loc_threshold = st.slider("Umbral de Probabilidad (PNNloc)", 0.05, 0.90, float(calib_data.get('lupori_loc_threshold', 0.20)), step=0.05)
+    score_threshold = st.slider("Umbral de Calificación (PNNscore)", 0.05, 1.0, float(calib_data.get('lupori_score_threshold', 0.30)), step=0.05)
+    tile_size = st.select_slider("Tamaño de tile (px)", options=[256, 512, 1024, 2048], value=int(calib_data.get('lupori_tile_size', 1024)))
+    tile_overlap = st.slider("Overlap entre tiles (px)", 16, 128, int(calib_data.get('lupori_tile_overlap', 32)), step=16)
 
 if st.sidebar.button("💾 Guardar Toda la Configuración"):
     calib_data.update({
@@ -124,22 +104,10 @@ if st.sidebar.button("💾 Guardar Toda la Configuración"):
         'pv_cellpose_diameter': pv_diam,
         'pv_cellpose_flow_threshold': pv_flow,
         'pv_cellpose_cellprob_threshold': pv_prob,
-        'pv_expansion_dist_um': pv_expansion_dist_um,
-        'pnn_intensity_threshold': pnn_thresh,
-        'pnn_exclusion_distance_um': pnn_excl,
-        'pnn_wfa_threshold_method': pnn_wfa_threshold_method,
-        'pnn_wfa_manual_threshold': pnn_wfa_manual_threshold,
-        'max_pnn_distance_um': max_pnn_distance_um,
-        'pnn_gaussian_sigma': pnn_gaussian_sigma,
-        'pnn_connect_fragments': pnn_connect_fragments,
-        'pnn_connection_radius_um': pnn_connection_radius_um,
-        'pnn_pruning_min_voxels': pnn_pruning_min_voxels,
-        'pnn_filter_by_nucleus': pnn_filter_by_nucleus,
-        'do_wfa_cellpose': do_wfa_cp,
-        'wfa_cellpose_filter_type': wfa_cp_filter,
-        'wfa_cellpose_diameter': wfa_cp_diam,
-        'wfa_cellpose_flow_threshold': wfa_cp_flow,
-        'wfa_cellpose_cellprob_threshold': wfa_cp_prob,
+        'lupori_loc_threshold': loc_threshold,
+        'lupori_score_threshold': score_threshold,
+        'lupori_tile_size': tile_size,
+        'lupori_tile_overlap': tile_overlap,
         'channels': ["AGR", "DAPI", "WFA", "PV"]
     })
     save_config(calib_data)
@@ -211,12 +179,43 @@ if os.path.exists(raw_data_path):
                 
                 badge = "✅ Ya procesada" if already_done else "⏳ Pendiente de procesar"
                 st.info(f"Archivo seleccionado: `{selected_file}` &nbsp;&nbsp; {badge}")
+                
                 st.markdown(f"""
                 - **Grupo:** {selected_group}
                 - **Sección:** {selected_section}
                 - **Sujeto:** {indiv_id}
                 - **Formato:** .TIF (4 Canales: AGR, DAPI, WFA, PV)
                 """)
+
+                if already_done:
+                    json_check = os.path.join('data/processed/metrics', selected_group, selected_section, f"{base_sel}_summary.json")
+                    if os.path.exists(json_check):
+                        try:
+                            with open(json_check, 'r') as f_json:
+                                summary_img = json.load(f_json)
+                            
+                            st.markdown("#### 📊 Métricas de esta Muestra:")
+                            col_i1, col_i2, col_i3, col_i4 = st.columns(4)
+                            col_i1.metric("PV+ Segmentadas", summary_img.get("total_pv_segmentation", 0))
+                            col_i2.metric("PNN+ Totales", summary_img.get("total_pnn_plus", 0))
+                            col_i3.metric("PNN+ Ocupadas (PV+/PNN+)", summary_img.get("pv_pnn_plus", 0))
+                            col_i4.metric("PNN+ Huecas (PV-/PNN+)", summary_img.get("hollow_pnn_plus", 0))
+                        except Exception as e:
+                            st.warning(f"No se pudieron cargar las métricas individuales: {e}")
+
+                    st.markdown("#### 🖥️ Visualización:")
+                    if st.button("🧪 Abrir en Napari", type="primary", key=f"btn_napari_{base_sel}"):
+                        import sys
+                        import subprocess
+                        cmd = [sys.executable, "napari_viewer.py", "--path", seg_check, "--pixel_size", str(px_size)]
+                        try:
+                            env = os.environ.copy()
+                            env["DISPLAY"] = os.environ.get("DISPLAY", ":0")
+                            subprocess.Popen(cmd, env=env)
+                            st.success("✅ Visor Napari lanzado con éxito.")
+                        except Exception as e:
+                            st.error(f"Error al lanzar Napari: {e}")
+
             else:
                 st.warning(f"No se detectaron archivos `.TIF` en la sección `{selected_section}`.")
         else:
@@ -265,22 +264,10 @@ if st.button("▶️ Procesar Todo el Experimento en Batch", type="primary", key
         'pv_cellpose_diameter': pv_diam,
         'pv_cellpose_flow_threshold': pv_flow,
         'pv_cellpose_cellprob_threshold': pv_prob,
-        'pv_expansion_dist_um': pv_expansion_dist_um,
-        'pnn_intensity_threshold': pnn_thresh,
-        'pnn_exclusion_distance_um': pnn_excl,
-        'pnn_wfa_threshold_method': pnn_wfa_threshold_method,
-        'pnn_wfa_manual_threshold': pnn_wfa_manual_threshold,
-        'max_pnn_distance_um': max_pnn_distance_um,
-        'pnn_gaussian_sigma': pnn_gaussian_sigma,
-        'pnn_connect_fragments': pnn_connect_fragments,
-        'pnn_connection_radius_um': pnn_connection_radius_um,
-        'pnn_pruning_min_voxels': pnn_pruning_min_voxels,
-        'pnn_filter_by_nucleus': pnn_filter_by_nucleus,
-        'do_wfa_cellpose': do_wfa_cp,
-        'wfa_cellpose_filter_type': wfa_cp_filter,
-        'wfa_cellpose_diameter': wfa_cp_diam,
-        'wfa_cellpose_flow_threshold': wfa_cp_flow,
-        'wfa_cellpose_cellprob_threshold': wfa_cp_prob,
+        'lupori_loc_threshold': loc_threshold,
+        'lupori_score_threshold': score_threshold,
+        'lupori_tile_size': tile_size,
+        'lupori_tile_overlap': tile_overlap,
         'channels': ["AGR", "DAPI", "WFA", "PV"]
     })
     save_config(calib_data)
@@ -311,16 +298,40 @@ if st.button("▶️ Procesar Todo el Experimento en Batch", type="primary", key
     from pipeline import run_pipeline_on_file
     from cellpose import models
     import torch
+    import sys
+
+    # Add model paths to sys
+    sys.path.append(os.path.abspath("src"))
+    sys.path.append(os.path.abspath("src/counting_perineuronal_nets"))
 
     use_gpu = torch.cuda.is_available()
     gpu_label = "GPU 🚀" if use_gpu else "CPU (sin CUDA)"
     st.write(f"Dispositivo: **{gpu_label}**")
 
-    with st.spinner("Cargando modelos Cellpose..."):
+    device = torch.device("cuda" if use_gpu else "cpu")
+
+    with st.spinner("Cargando modelos Cellpose y PNNloc/PNNscore..."):
         model_dapi = models.CellposeModel(gpu=use_gpu)
         model_pv   = models.CellposeModel(gpu=use_gpu) if do_pv else None
 
+        # PNNloc (Faster R-CNN)
+        from models.FasterRCNN import FasterRCNNWrapper
+        model_loc = FasterRCNNWrapper(in_channels=1, out_channels=1, model_pretrained=False)
+        ckpt_loc = "data/models/pnn_v2_fasterrcnn_640/best.pth"
+        checkpoint_loc = torch.load(ckpt_loc, map_location=device)
+        model_loc.load_state_dict(checkpoint_loc['model'])
+        model_loc.to(device).eval()
+        
+        # PNNscore (ConvNet)
+        from models.ConvNet import ConvNet
+        model_score = ConvNet(in_channels=1, num_classes=1)
+        ckpt_score = "data/models/pnn_v2_scoring_rank_learning/best.pth"
+        checkpoint_score = torch.load(ckpt_score, map_location=device)
+        model_score.load_state_dict(checkpoint_score['model'])
+        model_score.to(device).eval()
+
     progress_bar = st.progress(0)
+    st.empty() # Placeholder replacement
     status_text  = st.empty()
     results_log  = []  # accumulate per-image results
     result_table = st.empty()  # live-updating table placeholder
@@ -342,6 +353,9 @@ if st.button("▶️ Procesar Todo el Experimento en Batch", type="primary", key
                 out_metrics_dir=out_metr,
                 model_dapi=model_dapi,
                 model_pv_obj=model_pv,
+                model_loc=model_loc,
+                model_score=model_score,
+                device=device,
                 filter_type=dapi_filter,
                 diameter=dapi_diam,
                 flow_threshold=dapi_flow,
@@ -350,9 +364,10 @@ if st.button("▶️ Procesar Todo el Experimento en Batch", type="primary", key
                 pv_diameter=pv_diam,
                 pv_flow_threshold=pv_flow,
                 pv_cellprob_threshold=pv_prob,
-                pv_expansion_dist_um=pv_expansion_dist_um,
-                pnn_threshold=pnn_thresh,
-                pnn_exclusion_dist_um=pnn_excl,
+                loc_threshold=loc_threshold,
+                score_threshold=score_threshold,
+                tile_size=tile_size,
+                tile_overlap=tile_overlap,
                 px_size=px_size,
                 do_pv_segmentation=do_pv,
                 calib_data=calib_data

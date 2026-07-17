@@ -12,3 +12,20 @@ data/raw/
 !data/processed/**/*.TIF
 !data/processed/**/*.csv
 !data/processed/**/*.json
+*.tif
+*.tiff
+*.TIF
+
+# Python cache
+__pycache__/
+pages/__pycache__/
+**/*.pyc
+
+# Local agents config
+.agents/
+
+# Heavy downloaded weights / models
+data/models/
+
+# Embedded git repository (cloned dynamically at runtime)
+src/counting_perineuronal_nets/

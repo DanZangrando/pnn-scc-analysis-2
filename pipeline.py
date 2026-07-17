@@ -7,11 +7,21 @@ from cellpose import models
 from skimage.filters import threshold_otsu
 from skimage.measure import regionprops
 from skimage import exposure, draw
-from skimage.morphology import skeletonize, disk, binary_dilation, binary_closing, remove_small_objects
-from skan import Skeleton, summarize
-import pandas as pd
 import scipy.ndimage as ndi
-from skimage.measure import label as cc_label
+import pandas as pd
+import sys
+import torch
+import concurrent.futures
+
+# Add PNNloc / PNNscore directories to path
+sys.path.append(os.path.abspath("src"))
+sys.path.append(os.path.abspath("src/counting_perineuronal_nets"))
+
+from datasets.patched_datasets import PatchedMultiImageDataset
+from methods.detection.train_fn import predict_points
+from omegaconf import OmegaConf
+from torch.utils.data import DataLoader
+from methods.detection.transforms import ToTensor
 
 def get_or_create_mip(raw_path, px_size=1.0):
     if "data/processed/mips" in raw_path:
@@ -84,201 +94,37 @@ def load_channels_tif(path):
     
     return (pv, wfa, dapi, agr)
 
-def connect_nearby_fragments(binary_mask, radius_um, px_size):
-    radius_px = int(radius_um / px_size)
-    if radius_px < 1:
-        return binary_mask
-    selem = disk(radius_px)
-    dilated = binary_dilation(binary_mask, selem)
-    closed = binary_closing(dilated, selem)
-    return closed
-
-def prune_skeleton(skeleton_binary, pruning_min_voxels):
-    from scipy.ndimage import convolve
-    if pruning_min_voxels <= 0 or not np.any(skeleton_binary):
-        return skeleton_binary
-        
-    kernel = np.array([[1, 1, 1],
-                       [1, 0, 1],
-                       [1, 1, 1]])
+def extract_patch(args):
+    wfa_norm, r, c, half_sz = args
+    H, W = wfa_norm.shape
+    r_s, r_e = r - half_sz, r + half_sz
+    c_s, c_e = c - half_sz, c + half_sz
     
-    pruned_skel = skeleton_binary.copy()
-    max_passes = 30    
-    for _pass in range(max_passes):
-        neighbors = convolve(pruned_skel.astype(int), kernel, mode='constant', cval=0)
-        
-        # Endpoints: 1 neighbor. Isolated: 0.
-        endpoints_coords = np.argwhere(pruned_skel & (neighbors <= 1))
-        
-        if len(endpoints_coords) == 0:
-            break
-            
-        pixels_to_remove = set()
-        
-        for ep_y, ep_x in endpoints_coords:
-            branch_path = [(ep_y, ep_x)]
-            current_y, current_x = ep_y, ep_x
-            
-            is_short_branch = True
-            for step in range(pruning_min_voxels - 1):
-                active_neighbors = []
-                for dy in [-1, 0, 1]:
-                    for dx in [-1, 0, 1]:
-                        if dy == 0 and dx == 0:
-                            continue
-                        ny, nx = current_y + dy, current_x + dx
-                        if 0 <= ny < pruned_skel.shape[0] and 0 <= nx < pruned_skel.shape[1]:
-                            if pruned_skel[ny, nx] and (ny, nx) not in branch_path:
-                                active_neighbors.append((ny, nx))
-                
-                if len(active_neighbors) > 1:
-                    break
-                elif len(active_neighbors) == 1:
-                    current_y, current_x = active_neighbors[0]
-                    branch_path.append((current_y, current_x))
-                else:
-                    break
-            else:
-                is_short_branch = False
-                
-            if is_short_branch:
-                for py, px in branch_path:
-                    pixels_to_remove.add((py, px))
-                    
-        if not pixels_to_remove:
-            break
-            
-        for py, px in pixels_to_remove:
-            pruned_skel[py, px] = False
-            
-    pruned_skel = remove_small_objects(pruned_skel, min_size=pruning_min_voxels + 1, connectivity=2)
-    return skeletonize(pruned_skel)
-
-def filter_skeleton_by_nucleus_connectivity(skeleton, nuclear_mask):
-    if not np.any(skeleton):
-        return skeleton
+    r_s_c, r_e_c = max(0, r_s), min(H, r_e)
+    c_s_c, c_e_c = max(0, c_s), min(W, c_e)
+    patch_raw = wfa_norm[r_s_c:r_e_c, c_s_c:c_e_c].astype(np.float32)
     
-    labeled_skeleton, n_components = cc_label(skeleton, return_num=True, connectivity=2)
-    
-    if n_components <= 1:
-        return skeleton
-    
-    nuclear_overlap = labeled_skeleton * nuclear_mask
-    components_touching = np.unique(nuclear_overlap)
-    components_touching = components_touching[components_touching > 0]
-    
-    if len(components_touching) == 0:
-        nucleus_coords = np.argwhere(nuclear_mask)
-        if len(nucleus_coords) == 0:
-            return skeleton
-        
-        nucleus_centroid = nucleus_coords.mean(axis=0)
-        min_dist = np.inf
-        closest_component = 1
-        
-        for comp_id in range(1, n_components + 1):
-            comp_coords = np.argwhere(labeled_skeleton == comp_id)
-            if len(comp_coords) == 0:
-                continue
-            
-            dists = np.linalg.norm(comp_coords - nucleus_centroid, axis=1)
-            min_comp_dist = np.min(dists)
-            
-            if min_comp_dist < min_dist:
-                min_dist = min_comp_dist
-                closest_component = comp_id
-        
-        return (labeled_skeleton == closest_component)
-    
-    return np.isin(labeled_skeleton, components_touching)
-
-def analyze_cell_skeleton(skeleton_labels, label, px_size):
-    ys, xs = np.where(skeleton_labels == label)
-    if len(ys) <= 2:
-        return 0.0, 0, 0.0, 0, 0, 1.0, 0.0
-    
-    min_y, max_y = np.min(ys), np.max(ys)
-    min_x, max_x = np.min(xs), np.max(xs)
-    
-    min_y = max(0, min_y - 2)
-    max_y = min(skeleton_labels.shape[0], max_y + 3)
-    min_x = max(0, min_x - 2)
-    max_x = min(skeleton_labels.shape[1], max_x + 3)
-    
-    crop = (skeleton_labels[min_y:max_y, min_x:max_x] == label)
-    
-    try:
-        sk_obj = Skeleton(crop, spacing=px_size)
-        summary = summarize(sk_obj)
-        if not summary.empty:
-            total_length = float(summary['branch-distance'].sum())
-            n_branches = int(len(summary))
-            avg_branch_len = float(summary['branch-distance'].mean())
-            
-            # Additional topological metrics
-            degrees = sk_obj.degrees
-            n_endpoints = int(np.sum(degrees == 1))
-            n_junctions = int(np.sum(degrees > 2))
-            
-            # Tortuosity
-            tortuosity = summary['branch-distance'] / summary['euclidean-distance'].replace(0, np.nan)
-            tortuosity_mean = float(tortuosity.mean()) if not tortuosity.isna().all() else 1.0
-            
-            # Ramification index
-            ramification_index = float(n_branches / max(n_junctions, 1))
-            
-            return total_length, n_branches, avg_branch_len, n_endpoints, n_junctions, tortuosity_mean, ramification_index
-    except Exception:
-        pass
-    return 0.0, 0, 0.0, 0, 0, 1.0, 0.0
-
-def analyze_skeleton_thickness_intensity(w_raw, skeleton_labels, label, wfa_edt, px_size):
-    ys, xs = np.where(skeleton_labels == label)
-    if len(ys) == 0:
-        return 0.0, 0.0, 0.0, 0.0
-    
-    # 1. Local Thickness (diameter)
-    local_radii = wfa_edt[ys, xs]
-    local_diameters_um = local_radii * 2.0 * px_size
-    mean_thickness = float(np.mean(local_diameters_um))
-    max_thickness = float(np.max(local_diameters_um))
-    
-    # 2. Local WFA Intensity along skeleton
-    local_intensities = w_raw[ys, xs]
-    mean_intensity = float(np.mean(local_intensities))
-    
-    # 3. Sum of WFA Intensity in a 1.5 um neighborhood around the skeleton
-    dil_px = max(1, int(1.5 / px_size))
-    cell_skel_mask = (skeleton_labels == label)
-    
-    min_y, max_y = np.min(ys), np.max(ys)
-    min_x, max_x = np.min(xs), np.max(xs)
-    
-    min_y = max(0, min_y - dil_px - 1)
-    max_y = min(skeleton_labels.shape[0], max_y + dil_px + 2)
-    min_x = max(0, min_x - dil_px - 1)
-    max_x = min(skeleton_labels.shape[1], max_x + dil_px + 2)
-    
-    local_skel = cell_skel_mask[min_y:max_y, min_x:max_x]
-    selem = disk(dil_px)
-    local_dilated = binary_dilation(local_skel, selem)
-    
-    local_wfa = w_raw[min_y:max_y, min_x:max_x]
-    neighborhood_sum = float(np.sum(local_wfa[local_dilated]))
-    
-    return mean_thickness, max_thickness, mean_intensity, neighborhood_sum
+    py0 = max(0, -r_s)
+    py1 = max(0, r_e - H)
+    px0 = max(0, -c_s)
+    px1 = max(0, c_e - W)
+    patch = np.pad(patch_raw, ((py0, py1), (px0, px1)), mode='constant')
+    if patch.shape != (64, 64):
+        patch = cv2.resize(patch, (64, 64))
+    return patch, (r, c)
 
 def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
-                         model_dapi, model_pv_obj,
+                         model_dapi, model_pv_obj, model_loc, model_score, device,
                          filter_type, diameter, flow_threshold, cellprob_threshold,
                          pv_filter_type, pv_diameter, pv_flow_threshold, pv_cellprob_threshold,
-                         pv_expansion_dist_um, pnn_threshold, pnn_exclusion_dist_um,
+                         loc_threshold, score_threshold, tile_size, tile_overlap,
                          px_size, do_pv_segmentation, calib_data):
+    
     fname = os.path.basename(tif_path)
     base_name, _ = os.path.splitext(fname)
     (p_raw, w_raw, d_raw, a_raw) = load_channels_tif(tif_path)
 
-    # DAPI preprocessing (keep for overlay visualization only)
+    # 1. DAPI Segmentation (Cellpose)
     in_dapi = d_raw.copy()
     if filter_type == "Otsu Global":
         t = threshold_otsu(in_dapi)
@@ -290,7 +136,7 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
     m_dapi, _, _ = model_dapi.eval(in_dapi, diameter=diameter, 
                                     flow_threshold=flow_threshold, cellprob_threshold=cellprob_threshold)
 
-    # PV preprocessing
+    # 2. PV Segmentation (Cellpose)
     m_pv = np.zeros_like(m_dapi)
     if do_pv_segmentation and model_pv_obj is not None:
         in_pv = p_raw.copy()
@@ -303,111 +149,152 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
         m_pv, _, _ = model_pv_obj.eval(in_pv, diameter=pv_diameter, 
                                         flow_threshold=pv_flow_threshold, cellprob_threshold=pv_cellprob_threshold)
 
-    # WFA Cellpose preprocessing (segmenting PNN somas/holes)
-    m_wfa_cellpose = np.zeros_like(m_dapi)
-    do_wfa_cellpose = calib_data.get('do_wfa_cellpose', True)
-    if do_wfa_cellpose and model_pv_obj is not None:
-        in_wfa_cp = w_raw.copy()
-        wfa_cp_filter = calib_data.get('wfa_cellpose_filter_type', 'Ninguno')
-        if wfa_cp_filter == "Otsu Global":
-            t = threshold_otsu(in_wfa_cp)
-            in_wfa_cp[in_wfa_cp < t] = 0
-        elif wfa_cp_filter == "CLAHE (Adaptativo Local)":
-            clahe = exposure.equalize_adapthist(in_wfa_cp, clip_limit=0.03)
-            in_wfa_cp = (clahe * 65535).astype(np.uint16)
-        wfa_cp_diam = float(calib_data.get('wfa_cellpose_diameter', 30.0))
-        wfa_cp_flow = float(calib_data.get('wfa_cellpose_flow_threshold', 0.4))
-        wfa_cp_prob = float(calib_data.get('wfa_cellpose_cellprob_threshold', 0.0))
-        m_wfa_cellpose, _, _ = model_pv_obj.eval(in_wfa_cp, diameter=wfa_cp_diam,
-                                                 flow_threshold=wfa_cp_flow, cellprob_threshold=wfa_cp_prob)
-
-    # Somas regionprops
-    pv_props = regionprops(m_pv)
-    wfa_props = regionprops(m_wfa_cellpose)
-
-    # Fetch parameters
-    pnn_wfa_threshold_method = calib_data.get('pnn_wfa_threshold_method', 'Automático (Otsu)')
-    pnn_wfa_manual_threshold = float(calib_data.get('pnn_wfa_manual_threshold', 10000.0))
-    max_pnn_distance_um = float(calib_data.get('max_pnn_distance_um', 20.0))
-    
-    pnn_connect_fragments = calib_data.get('pnn_connect_fragments', False)
-    pnn_connection_radius_um = float(calib_data.get('pnn_connection_radius_um', 1.0))
-    pnn_pruning_min_voxels = int(calib_data.get('pnn_pruning_min_voxels', 0))
-    pnn_filter_by_nucleus = calib_data.get('pnn_filter_by_nucleus', False)
-    pnn_gaussian_sigma = float(calib_data.get('pnn_gaussian_sigma', 1.0))
-
-    # Global WFA Preprocessing (Smoothing)
-    w_proc = w_raw.copy()
-    if pnn_gaussian_sigma > 0:
-        w_proc = ndi.gaussian_filter(w_raw.astype(np.float32), sigma=pnn_gaussian_sigma)
-
-    # Global WFA Binarization
-    if pnn_wfa_threshold_method == "Automático (Otsu)":
-        try:
-            t_wfa = threshold_otsu(w_proc[w_proc > 0])
-        except Exception:
-            t_wfa = 1000.0
+    # 3. PNN Detection (PNNloc + PNNscore)
+    # Convert 16-bit WFA to 8-bit for neural network compatibility
+    w_min, w_max = w_raw.min(), w_raw.max()
+    if w_max > w_min:
+        wfa_8bit = ((w_raw - w_min) / (w_max - w_min) * 255.0).astype(np.uint8)
     else:
-        t_wfa = pnn_wfa_manual_threshold
+        wfa_8bit = w_raw.astype(np.uint8)
+
+    scale_factor = px_size / 0.325
+    H, W = w_raw.shape
+    
+    if abs(scale_factor - 1.0) > 0.01:
+        new_H = int(round(H * scale_factor))
+        new_W = int(round(W * scale_factor))
+        wfa_8bit_scaled = cv2.resize(wfa_8bit, (new_W, new_H), interpolation=cv2.INTER_CUBIC)
+    else:
+        wfa_8bit_scaled = wfa_8bit.copy()
+
+    # Write temporary file for PatchedMultiImageDataset
+    temp_wfa = f"temp_wfa_{os.getpid()}_{base_name}.tif"
+    tiff.imwrite(temp_wfa, wfa_8bit_scaled.astype(np.float32))
+    
+    candidates = []
+    H_scaled, W_scaled = wfa_8bit_scaled.shape
+    prob_map_scaled = np.zeros((H_scaled, W_scaled), dtype=np.float32)
+    try:
+        cfg_loc = OmegaConf.load("data/models/pnn_v2_fasterrcnn_640/.hydra/config.yaml")
+        cfg_loc.model.module.nms = 0.3
         
-    pnn_binary = w_proc > t_wfa
-    
-    if pnn_connect_fragments:
-        pnn_binary = connect_nearby_fragments(pnn_binary, pnn_connection_radius_um, px_size)
+        stride = tile_size - tile_overlap
+        ds = PatchedMultiImageDataset.from_paths([temp_wfa], patch_size=tile_size, stride=stride, transforms=ToTensor())
+        dl = DataLoader(ds, batch_size=1, shuffle=False)
         
-    # Erode the WFA Cellpose mask so we preserve the outer ring boundary for skeletonization
-    from skimage.morphology import binary_erosion
-    
-    # Erode by 2.0 um to preserve the ring/boundary of WFA Cellpose masks
-    erode_px = max(1, int(2.0 / px_size))
-    selem = disk(erode_px)
-    
-    m_wfa_eroded = np.zeros_like(m_wfa_cellpose)
-    for wfa_prop in wfa_props:
-        wfa_lbl = wfa_prop.label
-        submask = (m_wfa_cellpose == wfa_lbl)
-        eroded_sub = binary_erosion(submask, selem)
-        m_wfa_eroded[eroded_sub] = wfa_lbl
+        locs = predict_points(dl, model_loc, device, loc_threshold, cfg_loc)
         
-    pnn_binary_for_skeleton = pnn_binary & (~(m_wfa_eroded > 0))
-    wfa_skeleton = skeletonize(pnn_binary_for_skeleton)
+        for idx, row in locs.iterrows():
+            cy, cx = float(row["Y"]), float(row["X"])
+            score = float(row["score"])
+            candidates.append({
+                "centroid_y": cy,
+                "centroid_x": cx,
+                "prob_map_val": score
+            })
+            # Draw a small Gaussian peak on the scaled prob map (heatmap)
+            cy_int, cx_int = int(cy), int(cx)
+            r_g = 15
+            y0, y1 = max(0, cy_int - r_g), min(H_scaled, cy_int + r_g + 1)
+            x0, x1 = max(0, cx_int - r_g), min(W_scaled, cx_int + r_g + 1)
+            for y in range(y0, y1):
+                for x in range(x0, x1):
+                    dist2 = (y - cy)**2 + (x - cx)**2
+                    g = np.exp(-dist2 / (2 * (5.0**2)))
+                    prob_map_scaled[y, x] = max(prob_map_scaled[y, x], score * g)
+                    
+        # Resize probability map back to original dimensions and save as TIFF
+        prob_map_orig = cv2.resize(prob_map_scaled, (W, H), interpolation=cv2.INTER_LINEAR)
+        prob_map_file = os.path.join(out_segm_dir, f"{base_name}_prob_map.tif")
+        tiff.imwrite(prob_map_file, prob_map_orig.astype(np.float32))
+    finally:
+        if os.path.exists(temp_wfa):
+            os.remove(temp_wfa)
+
+    # Inferencia PNNscore on scaled WFA
+    wfa_norm = wfa_8bit_scaled.astype(np.float32) / 255.0
     
-    if pnn_pruning_min_voxels > 0:
-        wfa_skeleton = prune_skeleton(wfa_skeleton, pnn_pruning_min_voxels)
-
-    # Calculate WFA distance transform once globally for local thickness
-    wfa_edt = ndi.distance_transform_edt(pnn_binary)
-
-    # Voronoi Partitioning of Skeleton based on PV somas
-    # Voronoi Partitioning of Skeleton based on WFA Cellpose somas (hollow & filled PNNs)
-    skeleton_labels = np.zeros_like(m_wfa_cellpose, dtype=np.uint16)
-    max_dist_px = max_pnn_distance_um / px_size
+    half_sz = 32
+    patch_args = [(wfa_norm, int(c["centroid_y"]), int(c["centroid_x"]), half_sz) for c in candidates]
+    patches, valid_coords, valid_original_cands = [], [], []
     
-    if np.max(m_wfa_cellpose) > 0:
-        distances, indices = ndi.distance_transform_edt(m_wfa_cellpose == 0, return_indices=True)
-        nearest_labels = m_wfa_cellpose[indices[0], indices[1]]
-        valid_mask = (wfa_skeleton > 0) & (distances <= max_dist_px)
-        skeleton_labels[valid_mask] = nearest_labels[valid_mask]
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        for idx, result in enumerate(pool.map(extract_patch, patch_args)):
+            if result is not None:
+                patches.append(result[0])
+                valid_coords.append(result[1])
+                valid_original_cands.append(candidates[idx])
+                
+    scores = []
+    BATCH = 512
+    for i in range(0, len(patches), BATCH):
+        batch_t = torch.tensor(np.stack(patches[i:i+BATCH]), dtype=torch.float32, device=device).unsqueeze(1)
+        with torch.no_grad():
+            outputs = model_score(batch_t)
+            outputs = torch.sigmoid(outputs)
+            scores.extend(outputs.cpu().numpy().flatten().tolist())
+            
+    # Generate confirmed PNN labeled mask on original dimensions
+    m_wfa = np.zeros((H, W), dtype=np.uint16)
+    final_pnns = []
+    pnn_id = 1
+    
+    for cand, (r, c), score in zip(valid_original_cands, valid_coords, scores):
+        if score >= score_threshold:
+            # Map coordinates back to original resolution
+            r_orig = r / scale_factor
+            c_orig = c / scale_factor
+            rad_orig = 12.0 / scale_factor
+            
+            r_int, c_int = int(round(r_orig)), int(round(c_orig))
+            rad_int = max(3, int(round(rad_orig)))
+            
+            r_min, r_max = max(0, r_int - rad_int), min(H, r_int + rad_int + 1)
+            c_min, c_max = max(0, c_int - rad_int), min(W, c_int + rad_int + 1)
+            
+            y_grid, x_grid = np.ogrid[r_min - r_orig : r_max - r_orig, c_min - c_orig : c_max - c_orig]
+            circle_mask = y_grid*y_grid + x_grid*x_grid <= (rad_orig ** 2)
+            circle_mask = circle_mask[:(r_max-r_min), :(c_max-c_min)]
+            
+            m_wfa[r_min:r_max, c_min:c_max][circle_mask] = pnn_id
+            
+            local_wfa = w_raw[r_min:r_max, c_min:c_max]
+            wfa_vals = local_wfa[circle_mask]
+            mean_intensity = float(np.mean(wfa_vals)) if len(wfa_vals) > 0 else 0.0
+            max_intensity = float(np.max(wfa_vals)) if len(wfa_vals) > 0 else 0.0
+            area_um2 = np.sum(circle_mask) * (px_size ** 2)
+            diam = 2.0 * rad_orig * px_size
+            
+            final_pnns.append({
+                "pnn_id": pnn_id,
+                "score": float(score),
+                "centroid_y": float(r_orig),
+                "centroid_x": float(c_orig),
+                "area_um2": area_um2,
+                "diameter_um": diam,
+                "wfa_mean_intensity": mean_intensity,
+                "wfa_max_intensity": max_intensity
+            })
+            pnn_id += 1
 
-
-    # Pre-map WFA somas to PV somas to find overlaps based on largest surface area
+    # 4. Colocalization of PNN and PV
+    pv_props = regionprops(m_pv)
+    wfa_props = regionprops(m_wfa)
+    
     wfa_to_pv = {}
     pv_to_wfa = {}
     for wfa_prop in wfa_props:
         wfa_label = wfa_prop.label
-        wfa_mask = (m_wfa_cellpose == wfa_label)
+        wfa_mask = (m_wfa == wfa_label)
         
-        # Get all PV labels overlapping with this WFA mask
         pv_in_wfa = m_pv[wfa_mask]
         unique_pv, counts = np.unique(pv_in_wfa, return_counts=True)
         
-        # Filter out background (0)
         valid_idx = unique_pv > 0
         unique_pv = unique_pv[valid_idx]
         counts = counts[valid_idx]
         
         if len(unique_pv) > 0:
-            # Find the PV label with the maximum overlap area (count of pixels)
             best_idx = np.argmax(counts)
             best_pv_lbl = unique_pv[best_idx]
             
@@ -415,24 +302,20 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
             pv_to_wfa[best_pv_lbl] = wfa_label
 
     r_batch = []
-    # Keep track of matched PV labels
     matched_pv_labels = set(wfa_to_pv.values())
-
-    # 1. Process all WFA PNN+ somas (both PV+ and hollow PV-)
+    
+    # Process PNN+ detections (both PV+ and PV- hollow PNNs)
     for wfa_prop in wfa_props:
         wfa_label = wfa_prop.label
-        wfa_mask = (m_wfa_cellpose == wfa_label)
+        wfa_mask = (m_wfa == wfa_label)
         
-        # PNN soma properties
+        pnn_info = next((p for p in final_pnns if p["pnn_id"] == wfa_label), {})
         w_cy, w_cx = wfa_prop.centroid
         w_area = wfa_prop.area * (px_size ** 2)
         w_diam = wfa_prop.equivalent_diameter_area * px_size
         
-        # Check if matched to any PV+ soma
         pv_label = wfa_to_pv.get(wfa_label, None)
-        
         if pv_label is not None:
-            # PV+/PNN+ Cell
             pv_prop = next((p for p in pv_props if p.label == pv_label), None)
             if pv_prop is not None:
                 cy, cx = pv_prop.centroid
@@ -445,62 +328,34 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
             cell_type = "PV+/PNN+"
             is_pv_plus = True
         else:
-            # PV-/PNN+ (Hollow PNN)
             cy, cx = w_cy, w_cx
             pv_area = 0.0
             pv_diameter = 0.0
             cell_type = "PV-/PNN+"
             is_pv_plus = False
-
-        # Calculate WFA sum intensity inside the soma/hole mask itself
+            
         wfa_s = float(np.sum(w_raw[wfa_mask]))
-
-        # Apply Cell connectivity filter to skeleton if active
-        if pnn_filter_by_nucleus:
-            cell_skel = (skeleton_labels == wfa_label)
-            if np.any(cell_skel):
-                filtered_skel = filter_skeleton_by_nucleus_connectivity(cell_skel, wfa_mask)
-                skeleton_labels[skeleton_labels == wfa_label] = 0
-                skeleton_labels[filtered_skel] = wfa_label
-
-        # Skeleton metrics via Skan helper
-        skel_length, skel_branches, skel_avg_branch, skel_endpoints, skel_junctions, skel_tortuosity, skel_ramification = analyze_cell_skeleton(skeleton_labels, wfa_label, px_size)
         
-        # Thickness and intensity along skeleton
-        skel_mean_thick, skel_max_thick, skel_mean_int, skel_neighborhood_sum = analyze_skeleton_thickness_intensity(
-            w_raw, skeleton_labels, wfa_label, wfa_edt, px_size
-        )
-
         r_batch.append({
             'label': wfa_label,
-            'centroid_y': cy,
-            'centroid_x': cx,
-            'area_um2': pv_area if is_pv_plus else w_area,
-            'diameter_um': pv_diameter if is_pv_plus else w_diam,
+            'centroid_y': w_cy,
+            'centroid_x': w_cx,
+            'area_um2': w_area,
+            'diameter_um': w_diam,
             'wfa_sum_intensity': wfa_s,
             'is_pnn_plus': True,
             'is_pv_plus': is_pv_plus,
             'pv_label': pv_label if is_pv_plus else -1,
-            'skel_total_length_um': skel_length,
-            'skel_branches_count': skel_branches,
-            'skel_avg_branch_len_um': skel_avg_branch,
-            'skel_endpoints_count': skel_endpoints,
-            'skel_junctions_count': skel_junctions,
-            'skel_tortuosity_mean': skel_tortuosity,
-            'skel_ramification_index': skel_ramification,
-            'skel_mean_thickness_um': skel_mean_thick,
-            'skel_max_thickness_um': skel_max_thick,
-            'skel_mean_intensity': skel_mean_int,
-            'skel_neighborhood_wfa_sum': skel_neighborhood_sum,
             'cell_type': cell_type,
             'pv_area_um2': pv_area,
             'pv_diameter_um': pv_diameter,
             'pnn_area_um2': w_area,
-            'pnn_diameter_um': w_diam
+            'pnn_diameter_um': w_diam,
+            'score': pnn_info.get("score", 0.0)
         })
-
-    # 2. Process all PV+ cells without PNN (PV+/PNN-)
-    max_wfa_label = int(np.max(m_wfa_cellpose)) if np.max(m_wfa_cellpose) > 0 else 0
+        
+    # Process PV+/PNN- cells (PV+ somas not associated with any PNN)
+    max_wfa_label = int(np.max(m_wfa)) if np.max(m_wfa) > 0 else 0
     for pvp in pv_props:
         pv_label = pvp.label
         if pv_label in matched_pv_labels:
@@ -511,10 +366,7 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
         pv_area = pvp.area * (px_size ** 2)
         pv_diameter = pvp.equivalent_diameter_area * px_size
         
-        # Calculate WFA sum intensity inside the PV soma itself
         wfa_s = float(np.sum(w_raw[pv_mask]))
-
-        # Unique label ID to avoid collisions
         unique_label = max_wfa_label + pv_label
         
         r_batch.append({
@@ -527,66 +379,48 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
             'is_pnn_plus': False,
             'is_pv_plus': True,
             'pv_label': pv_label,
-            'skel_total_length_um': 0.0,
-            'skel_branches_count': 0,
-            'skel_avg_branch_len_um': 0.0,
-            'skel_endpoints_count': 0,
-            'skel_junctions_count': 0,
-            'skel_tortuosity_mean': 1.0,
-            'skel_ramification_index': 0.0,
-            'skel_mean_thickness_um': 0.0,
-            'skel_max_thickness_um': 0.0,
-            'skel_mean_intensity': 0.0,
-            'skel_neighborhood_wfa_sum': 0.0,
             'cell_type': "PV+/PNN-",
             'pv_area_um2': pv_area,
             'pv_diameter_um': pv_diameter,
             'pnn_area_um2': 0.0,
-            'pnn_diameter_um': 0.0
+            'pnn_diameter_um': 0.0,
+            'score': 0.0
         })
 
-    # Keep all segmented cells without NMS exclusion
-    r_batch = [r for r in r_batch if r['cell_type'] != "PV-/PNN-"]
-
+    # Save CSV outputs
     df_b = pd.DataFrame(r_batch)
     if df_b.empty:
         df_b = pd.DataFrame(columns=[
             'label', 'centroid_y', 'centroid_x', 'area_um2', 'diameter_um', 
             'wfa_sum_intensity', 'is_pnn_plus', 'is_pv_plus', 'pv_label',
-            'skel_total_length_um', 'skel_branches_count', 'skel_avg_branch_len_um',
-            'skel_endpoints_count', 'skel_junctions_count', 'skel_tortuosity_mean', 'skel_ramification_index',
-            'skel_mean_thickness_um', 'skel_max_thickness_um', 'skel_mean_intensity', 'skel_neighborhood_wfa_sum',
-            'cell_type', 'pv_area_um2', 'pv_diameter_um', 'pnn_area_um2', 'pnn_diameter_um'
+            'cell_type', 'pv_area_um2', 'pv_diameter_um', 'pnn_area_um2', 'pnn_diameter_um', 'score'
         ])
         
     csv_name = f"{base_name}_nuclei_metrics.csv"
     df_b.to_csv(os.path.join(out_metrics_dir, csv_name), index=False)
 
-    # TIFF output - only save the 4 masks to save space
+    # Save segmented Masks TIFF (4 channels: DAPI, PV, PNN_Mask, WFA_Raw)
     stk = np.stack([m_dapi.astype(np.uint16),
                     m_pv.astype(np.uint16),
-                    skeleton_labels.astype(np.uint16),
-                    m_wfa_cellpose.astype(np.uint16)], axis=0)
+                    m_wfa.astype(np.uint16),
+                    w_raw.astype(np.uint16)], axis=0)
                           
     segm_name = f"{base_name}_masks.tif"
     tiff.imwrite(os.path.join(out_segm_dir, segm_name),
                  stk, imagej=True,
                  metadata={'spacing': px_size, 'unit': 'um', 'Axes': 'CYX',
-                           'Labels': ['DAPI_Mask', 'PV_Mask', 'PNN_Skeleton_Mask', 'WFA_Cellpose_Mask']})
+                           'Labels': ['DAPI_Mask', 'PV_Mask', 'PNN_Mask', 'WFA_Raw']})
 
-    # DAPI-centric metrics calculation - aligned with Cellpose spatial mapping (no arbitrary threshold/diameter)
+    # DAPI-centric metrics (for colocalization reference)
     pnn_radius_um = float(calib_data.get('pnn_radius_um', 20.0))
     dapi_props = regionprops(m_dapi, intensity_image=w_raw)
     dapi_batch = []
     
     for db in dapi_props:
         cy, cx = db.centroid
-        
-        # Check colocalization: centroid inside PV mask or WFA Cellpose mask
         is_pv_coloc = bool(m_pv[int(cy), int(cx)] > 0)
-        is_pnn = bool(m_wfa_cellpose[int(cy), int(cx)] > 0)
+        is_pnn = bool(m_wfa[int(cy), int(cx)] > 0)
         
-        # Calculate WFA sum in a disk for historical reference only
         r_px = pnn_radius_um / px_size if pnn_radius_um > 0 else 20.0 / px_size
         rd, cd = draw.disk((cy, cx), r_px, shape=w_raw.shape)
         wfa_sum = float(np.sum(w_raw[rd, cd]))
@@ -613,7 +447,7 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
     dapi_csv_name = f"{base_name}_dapi_metrics.csv"
     df_dapi.to_csv(os.path.join(out_metrics_dir, dapi_csv_name), index=False)
 
-    # Summary JSON calculations
+    # Save summary JSON
     total_pv_segmentation = int(np.max(m_pv)) if np.max(m_pv) > 0 else 0
     pv_pnn_plus = int(sum(1 for r in r_batch if r['cell_type'] == "PV+/PNN+"))
     pv_pnn_minus = int(sum(1 for r in r_batch if r['cell_type'] == "PV+/PNN-"))
@@ -623,9 +457,9 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
     summary = {
         "total_dapi": int(np.max(m_dapi)) if np.max(m_dapi) > 0 else 0,
         "total_pv_segmentation": total_pv_segmentation,
-        "pnn_plus": total_pnn_plus,            # For backward compatibility
-        "pnn_minus": pv_pnn_minus,              # For backward compatibility
-        "dapi_pv_coloc": pv_pnn_plus,           # For backward compatibility
+        "pnn_plus": total_pnn_plus,
+        "pnn_minus": pv_pnn_minus,
+        "dapi_pv_coloc": pv_pnn_plus,
         "pv_pnn_plus": pv_pnn_plus,
         "pv_pnn_minus": pv_pnn_minus,
         "hollow_pnn_plus": hollow_pnn_plus,
@@ -636,5 +470,5 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
     json_name = f"{base_name}_summary.json"
     with open(os.path.join(out_metrics_dir, json_name), 'w') as fs:
         json.dump(summary, fs, indent=4)
-
+        
     return summary
