@@ -802,4 +802,7 @@ Cargando mapa de probabilidad PNNloc: data/processed/segmented/ACF 14 DÍAS HEMB
                                              [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.21it/s]                                                             PRED (patches):   0%|          | 0/1 [00:00<?, ?it/s]
   0%|          | 0/9 [00:00<?, ?it/s][A
 100%|██████████| 9/9 [00:00<00:00, 87.21it/s][A
-                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.44it/s]                                                             
+                                             [APRED (patches): 100%|██████████| 1/1 [00:00<00:00,  9.44it/s]                                                             Cargando imagen: data/processed/segmented/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1_masks.tif (Paso: all)
+Estructura cargada: (4, 1092, 1260) con 4 canales.
+Detectado archivo de máscaras. Cargando canales biológicos de: data/processed/mips/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1.TIF
+Cargando mapa de probabilidad PNNloc: data/processed/segmented/ACF 14 DÍAS HEMBRA/CONTRA/ACF_49~1_prob_map.tif

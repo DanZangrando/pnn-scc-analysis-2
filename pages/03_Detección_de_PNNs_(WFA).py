@@ -105,13 +105,14 @@ except Exception as e:
 st.sidebar.header("⚙️ Ajustes de Deep Learning (IA)")
 loc_threshold = st.sidebar.slider("Umbral de Probabilidad (PNNloc)", 0.05, 0.90, float(calib_data.get('lupori_loc_threshold', 0.20)), step=0.05)
 score_threshold = st.sidebar.slider("Umbral de Calificación (PNNscore)", 0.05, 1.0, float(calib_data.get('lupori_score_threshold', 0.30)), step=0.05)
+min_peak_dist = st.sidebar.slider("Distancia mínima entre PNNs (px)", 10, 80, int(calib_data.get('lupori_min_peak_dist', 30)), step=5)
 tile_size = st.sidebar.select_slider("Tamaño de tile (px)", options=[256, 512, 1024, 2048], value=int(calib_data.get('lupori_tile_size', 1024)))
 tile_overlap = st.sidebar.slider("Overlap entre tiles (px)", 16, 128, int(calib_data.get('lupori_tile_overlap', 32)), step=16)
 
 px_size = float(calib_data.get('pixel_size_um', 1.0))
 
 st.sidebar.markdown("---")
-run_btn = st.sidebar.button("🧠 Detectar PNNs (WFA)", type="primary", width="stretch")
+run_btn = st.sidebar.button("🧠 Detectar PNNs (WFA)", type="primary")
 
 base_fn, _ = os.path.splitext(selected_filename)
 seg_file = os.path.join(SEGM_DIR, f"{base_fn}_masks.tif")
@@ -165,6 +166,7 @@ if run_btn:
     calib_data.update({
         'lupori_loc_threshold': loc_threshold,
         'lupori_score_threshold': score_threshold,
+        'lupori_min_peak_dist': min_peak_dist,
         'lupori_tile_size': tile_size,
         'lupori_tile_overlap': tile_overlap
     })
@@ -214,15 +216,32 @@ if run_btn:
                 H_scaled, W_scaled = wfa_8bit_scaled.shape
                 prob_map_scaled = np.zeros((H_scaled, W_scaled), dtype=np.float32)
                 
+                raw_candidates = []
                 for idx, row in locs.iterrows():
-                    cy, cx = float(row["Y"]), float(row["X"])
-                    score = float(row["score"])
-                    candidates.append({
-                        "id": idx + 1,
-                        "centroid_y": cy,
-                        "centroid_x": cx,
-                        "prob_map_val": score
+                    raw_candidates.append({
+                        "centroid_y": float(row["Y"]),
+                        "centroid_x": float(row["X"]),
+                        "prob_map_val": float(row["score"])
                     })
+                    
+                # Greedy spatial coordinate NMS using min_peak_dist
+                if raw_candidates:
+                    sorted_cands = sorted(raw_candidates, key=lambda x: x["prob_map_val"], reverse=True)
+                    for c in sorted_cands:
+                        cy, cx = c["centroid_y"], c["centroid_x"]
+                        dup = False
+                        for mc in candidates:
+                            mcy, mcx = mc["centroid_y"], mc["centroid_x"]
+                            if np.sqrt((cy - mcy)**2 + (cx - mcx)**2) < min_peak_dist:
+                                dup = True
+                                break
+                        if not dup:
+                            c["id"] = len(candidates) + 1
+                            candidates.append(c)
+                            
+                for idx, c in enumerate(candidates):
+                    cy, cx = c["centroid_y"], c["centroid_x"]
+                    score = c["prob_map_val"]
                     
                     # Draw a small Gaussian peak on the scaled prob map (heatmap)
                     cy_int, cx_int = int(cy), int(cx)

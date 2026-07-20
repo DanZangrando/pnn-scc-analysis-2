@@ -184,14 +184,32 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
         
         locs = predict_points(dl, model_loc, device, loc_threshold, cfg_loc)
         
+        raw_candidates = []
         for idx, row in locs.iterrows():
-            cy, cx = float(row["Y"]), float(row["X"])
-            score = float(row["score"])
-            candidates.append({
-                "centroid_y": cy,
-                "centroid_x": cx,
-                "prob_map_val": score
+            raw_candidates.append({
+                "centroid_y": float(row["Y"]),
+                "centroid_x": float(row["X"]),
+                "prob_map_val": float(row["score"])
             })
+            
+        min_peak_dist = calib_data.get("lupori_min_peak_dist", 30)
+        candidates = []
+        if raw_candidates:
+            sorted_cands = sorted(raw_candidates, key=lambda x: x["prob_map_val"], reverse=True)
+            for c in sorted_cands:
+                cy, cx = c["centroid_y"], c["centroid_x"]
+                dup = False
+                for mc in candidates:
+                    mcy, mcx = mc["centroid_y"], mc["centroid_x"]
+                    if np.sqrt((cy - mcy)**2 + (cx - mcx)**2) < min_peak_dist:
+                        dup = True
+                        break
+                if not dup:
+                    candidates.append(c)
+                    
+        for idx, c in enumerate(candidates):
+            cy, cx = c["centroid_y"], c["centroid_x"]
+            score = c["prob_map_val"]
             # Draw a small Gaussian peak on the scaled prob map (heatmap)
             cy_int, cx_int = int(cy), int(cx)
             r_g = 15

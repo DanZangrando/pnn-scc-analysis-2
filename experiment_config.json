@@ -34,7 +34,17 @@
     "wfa_cellpose_flow_threshold": 0.7,
     "wfa_cellpose_cellprob_threshold": 0.0,
     "lupori_loc_threshold": 0.2,
-    "lupori_score_threshold": 0.3,
+    "lupori_score_threshold": 0.35,
     "lupori_tile_size": 1024,
-    "lupori_tile_overlap": 32
+    "lupori_tile_overlap": 32,
+    "tile_grid_n": 5,
+    "tile_grid_m": 5,
+    "tile_channel_mode": "Solo WFA (Rojo)",
+    "tile_p_low": 0,
+    "tile_p_high": 100,
+    "tile_show_grid": true,
+    "tile_gamma": 1.0,
+    "tile_width": 750,
+    "tile_mosaic_size": 110,
+    "lupori_min_peak_dist": 35
 }

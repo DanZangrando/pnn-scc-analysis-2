@@ -110,7 +110,7 @@ def main():
                         viewer.add_image(
                             raw_img[2],
                             name="02 - WFA (Red Perineuronal)",
-                            colormap="green",
+                            colormap="red",
                             scale=scale,
                             blending="additive",
                             visible=True
@@ -121,7 +121,7 @@ def main():
                         viewer.add_image(
                             raw_img[3],
                             name="03 - PV (Parvalbúmina)",
-                            colormap="gray",
+                            colormap="green",
                             scale=scale,
                             blending="additive",
                             visible=True
@@ -173,7 +173,7 @@ def main():
                 viewer.add_image(
                     img[2],
                     name="02 - WFA (PNN)",
-                    colormap="green",
+                    colormap="red",
                     scale=scale,
                     blending="additive",
                     visible=True
@@ -183,7 +183,7 @@ def main():
                 viewer.add_image(
                     img[3],
                     name="03 - PV (Parvalbúmina)",
-                    colormap="gray",
+                    colormap="green",
                     scale=scale,
                     blending="additive",
                     visible=True

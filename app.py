@@ -89,6 +89,7 @@ with st.sidebar.expander("🧠 Parámetros PNNloc / PNNscore"):
     st.markdown("Detección de PNNs mediante modelos de Deep Learning (Faster R-CNN y ConvNet).")
     loc_threshold = st.slider("Umbral de Probabilidad (PNNloc)", 0.05, 0.90, float(calib_data.get('lupori_loc_threshold', 0.20)), step=0.05)
     score_threshold = st.slider("Umbral de Calificación (PNNscore)", 0.05, 1.0, float(calib_data.get('lupori_score_threshold', 0.30)), step=0.05)
+    min_peak_dist = st.slider("Distancia mínima entre PNNs (px)", 10, 80, int(calib_data.get('lupori_min_peak_dist', 30)), step=5)
     tile_size = st.select_slider("Tamaño de tile (px)", options=[256, 512, 1024, 2048], value=int(calib_data.get('lupori_tile_size', 1024)))
     tile_overlap = st.slider("Overlap entre tiles (px)", 16, 128, int(calib_data.get('lupori_tile_overlap', 32)), step=16)
 
@@ -106,6 +107,7 @@ if st.sidebar.button("💾 Guardar Toda la Configuración"):
         'pv_cellpose_cellprob_threshold': pv_prob,
         'lupori_loc_threshold': loc_threshold,
         'lupori_score_threshold': score_threshold,
+        'lupori_min_peak_dist': min_peak_dist,
         'lupori_tile_size': tile_size,
         'lupori_tile_overlap': tile_overlap,
         'channels': ["AGR", "DAPI", "WFA", "PV"]
@@ -266,6 +268,7 @@ if st.button("▶️ Procesar Todo el Experimento en Batch", type="primary", key
         'pv_cellpose_cellprob_threshold': pv_prob,
         'lupori_loc_threshold': loc_threshold,
         'lupori_score_threshold': score_threshold,
+        'lupori_min_peak_dist': min_peak_dist,
         'lupori_tile_size': tile_size,
         'lupori_tile_overlap': tile_overlap,
         'channels': ["AGR", "DAPI", "WFA", "PV"]
