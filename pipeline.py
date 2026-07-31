@@ -295,64 +295,145 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
             })
             pnn_id += 1
 
-    # 4. Colocalization of PNN and PV
+    # 4. Colocalization of PNN and PV & Label Harmonization
     pv_props = regionprops(m_pv)
-    wfa_props = regionprops(m_wfa)
     
+    # Map each PNN in final_pnns to its best overlapping PV soma
     wfa_to_pv = {}
     pv_to_wfa = {}
-    for wfa_prop in wfa_props:
-        wfa_label = wfa_prop.label
-        wfa_mask = (m_wfa == wfa_label)
-        
+    for pnn in final_pnns:
+        wfa_id = pnn["pnn_id"]
+        wfa_mask = (m_wfa == wfa_id)
+        if np.sum(wfa_mask) == 0:
+            continue
         pv_in_wfa = m_pv[wfa_mask]
         unique_pv, counts = np.unique(pv_in_wfa, return_counts=True)
-        
         valid_idx = unique_pv > 0
         unique_pv = unique_pv[valid_idx]
         counts = counts[valid_idx]
-        
         if len(unique_pv) > 0:
             best_idx = np.argmax(counts)
             best_pv_lbl = unique_pv[best_idx]
-            
-            wfa_to_pv[wfa_label] = best_pv_lbl
-            pv_to_wfa[best_pv_lbl] = wfa_label
+            wfa_to_pv[wfa_id] = best_pv_lbl
+            pv_to_wfa[best_pv_lbl] = wfa_id
 
-    r_batch = []
-    matched_pv_labels = set(wfa_to_pv.values())
+    max_val_wfa = 65535.0 if w_raw.dtype == np.uint16 or np.max(w_raw) > 255 else 255.0
+    max_val_pv = 65535.0 if p_raw.dtype == np.uint16 or np.max(p_raw) > 255 else 255.0
+
+    # Harmonized Mask Arrays (Matching IDs across PV, PNN, and Ring layers)
+    m_pv_h = np.zeros((H, W), dtype=np.uint16)
+    m_wfa_h = np.zeros((H, W), dtype=np.uint16)
+    somas_for_dilation = np.zeros((H, W), dtype=np.uint16)
     
-    # Process PNN+ detections (both PV+ and PV- hollow PNNs)
-    for wfa_prop in wfa_props:
-        wfa_label = wfa_prop.label
+    neuron_id = 1
+    pnn_id_map = {}
+    pv_id_map = {}
+    matched_pv_labels = set(wfa_to_pv.values())
+
+    # Map PNN+ detections from final_pnns
+    for pnn in final_pnns:
+        wfa_lbl = pnn["pnn_id"]
+        wfa_m = (m_wfa == wfa_lbl)
+        if np.sum(wfa_m) == 0:
+            continue
+            
+        curr_id = neuron_id
+        pnn_id_map[wfa_lbl] = curr_id
+        m_wfa_h[wfa_m] = curr_id
+        
+        pv_lbl = wfa_to_pv.get(wfa_lbl, None)
+        if pv_lbl is not None:
+            pv_m = (m_pv == pv_lbl)
+            pv_id_map[pv_lbl] = curr_id
+            m_pv_h[pv_m] = curr_id
+            somas_for_dilation[pv_m] = curr_id
+        else:
+            somas_for_dilation[wfa_m] = curr_id
+            
+        neuron_id += 1
+
+    # Map remaining PV+ somas without PNN (PV+/PNN-)
+    for pvp in pv_props:
+        pv_lbl = pvp.label
+        if pv_lbl in matched_pv_labels:
+            continue
+        pv_m = (m_pv == pv_lbl)
+        curr_id = neuron_id
+        pv_id_map[pv_lbl] = curr_id
+        m_pv_h[pv_m] = curr_id
+        somas_for_dilation[pv_m] = curr_id
+        neuron_id += 1
+
+    # Clean Voronoi Pericellular Ring Expansion (Smooth 4µm expansion originating from soma bodies)
+    ring_radius_px = max(2, int(round(4.0 / px_size)))
+    all_somas_exclusion = (m_pv_h > 0) | (m_dapi > 0)
+
+    if np.max(somas_for_dilation) > 0:
+        has_soma_mask = (somas_for_dilation > 0)
+        dist_map, indices = ndi.distance_transform_edt(~has_soma_mask, return_indices=True)
+        nearest_cell_ids = somas_for_dilation[indices[0], indices[1]]
+        m_ring_h = np.where((dist_map > 0) & (dist_map <= ring_radius_px) & (~all_somas_exclusion), nearest_cell_ids, 0).astype(np.uint16)
+    else:
+        m_ring_h = np.zeros((H, W), dtype=np.uint16)
+
+    m_pv = m_pv_h
+    m_wfa = m_wfa_h
+    m_ring = m_ring_h
+
+    power_map = (w_raw.astype(np.float32) / max_val_wfa).copy()
+    r_batch = []
+
+    # Process PNN+ detections from final_pnns
+    for pnn in final_pnns:
+        wfa_orig_lbl = pnn["pnn_id"]
+        wfa_label = pnn_id_map.get(wfa_orig_lbl)
+        if wfa_label is None:
+            continue
+            
         wfa_mask = (m_wfa == wfa_label)
+        ring_mask = (m_ring == wfa_label)
         
-        pnn_info = next((p for p in final_pnns if p["pnn_id"] == wfa_label), {})
-        w_cy, w_cx = wfa_prop.centroid
-        w_area = wfa_prop.area * (px_size ** 2)
-        w_diam = wfa_prop.equivalent_diameter_area * px_size
+        w_cy, w_cx = pnn["centroid_y"], pnn["centroid_x"]
+        w_area = pnn["area_um2"]
+        w_diam = pnn["diameter_um"]
+        pnn_score = pnn["score"]
         
-        pv_label = wfa_to_pv.get(wfa_label, None)
+        wfa_mean_soma = float(np.mean(w_raw[wfa_mask])) if np.sum(wfa_mask) > 0 else 0.0
+        wfa_mean_ring = float(np.mean(w_raw[ring_mask])) if np.sum(ring_mask) > 0 else wfa_mean_soma
+        
+        wfa_pericellular_norm = wfa_mean_ring / max_val_wfa
+        if np.sum(ring_mask) > 0:
+            power_map[ring_mask] = wfa_pericellular_norm
+        if np.sum(wfa_mask) > 0:
+            power_map[wfa_mask] = wfa_pericellular_norm
+        
+        pv_label = wfa_to_pv.get(wfa_orig_lbl, None)
         if pv_label is not None:
-            pv_prop = next((p for p in pv_props if p.label == pv_label), None)
-            if pv_prop is not None:
+            pv_mask = (m_pv == wfa_label)
+            if np.sum(pv_mask) > 0:
+                pv_prop = regionprops(pv_mask.astype(np.uint8))[0]
                 cy, cx = pv_prop.centroid
                 pv_area = pv_prop.area * (px_size ** 2)
                 pv_diameter = pv_prop.equivalent_diameter_area * px_size
+                pv_mean_int = float(np.mean(p_raw[pv_mask]))
             else:
                 cy, cx = w_cy, w_cx
                 pv_area = 0.0
                 pv_diameter = 0.0
+                pv_mean_int = 0.0
             cell_type = "PV+/PNN+"
             is_pv_plus = True
         else:
             cy, cx = w_cy, w_cx
             pv_area = 0.0
             pv_diameter = 0.0
+            pv_mean_int = 0.0
             cell_type = "PV-/PNN+"
             is_pv_plus = False
             
-        wfa_s = float(np.sum(w_raw[wfa_mask]))
+        wfa_s = float(np.sum(w_raw[wfa_mask])) if np.sum(wfa_mask) > 0 else 0.0
+        wfa_intensity_norm = wfa_mean_soma / max_val_wfa
+        pv_intensity_norm = pv_mean_int / max_val_pv
         
         r_batch.append({
             'label': wfa_label,
@@ -361,39 +442,63 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
             'area_um2': w_area,
             'diameter_um': w_diam,
             'wfa_sum_intensity': wfa_s,
+            'wfa_mean_intensity': wfa_mean_soma,
+            'wfa_pericellular_intensity': wfa_mean_ring,
+            'wfa_intensity_norm': wfa_intensity_norm,
+            'wfa_pericellular_norm': wfa_pericellular_norm,
+            'pv_intensity_norm': pv_intensity_norm,
             'is_pnn_plus': True,
             'is_pv_plus': is_pv_plus,
-            'pv_label': pv_label if is_pv_plus else -1,
+            'pv_label': wfa_label if is_pv_plus else -1,
             'cell_type': cell_type,
             'pv_area_um2': pv_area,
             'pv_diameter_um': pv_diameter,
             'pnn_area_um2': w_area,
             'pnn_diameter_um': w_diam,
-            'score': pnn_info.get("score", 0.0)
+            'score': pnn_score
         })
         
     # Process PV+/PNN- cells (PV+ somas not associated with any PNN)
-    max_wfa_label = int(np.max(m_wfa)) if np.max(m_wfa) > 0 else 0
     for pvp in pv_props:
-        pv_label = pvp.label
-        if pv_label in matched_pv_labels:
+        pv_orig_lbl = pvp.label
+        if pv_orig_lbl in matched_pv_labels:
+            continue
+        pv_label = pv_id_map.get(pv_orig_lbl)
+        if pv_label is None:
             continue
             
         pv_mask = (m_pv == pv_label)
+        ring_mask = (m_ring == pv_label)
+        
         cy, cx = pvp.centroid
         pv_area = pvp.area * (px_size ** 2)
         pv_diameter = pvp.equivalent_diameter_area * px_size
         
+        pv_mean_int = float(np.mean(p_raw[pv_mask])) if np.sum(pv_mask) > 0 else 0.0
+        wfa_mean_soma = float(np.mean(w_raw[pv_mask])) if np.sum(pv_mask) > 0 else 0.0
+        wfa_mean_ring = float(np.mean(w_raw[ring_mask])) if np.sum(ring_mask) > 0 else wfa_mean_soma
         wfa_s = float(np.sum(w_raw[pv_mask]))
-        unique_label = max_wfa_label + pv_label
+        
+        wfa_intensity_norm = wfa_mean_soma / max_val_wfa
+        wfa_pericellular_norm = wfa_mean_ring / max_val_wfa
+        pv_intensity_norm = pv_mean_int / max_val_pv
+        
+        if np.sum(ring_mask) > 0:
+            power_map[ring_mask] = wfa_pericellular_norm
+        power_map[pv_mask] = wfa_pericellular_norm
         
         r_batch.append({
-            'label': unique_label,
+            'label': pv_label,
             'centroid_y': cy,
             'centroid_x': cx,
             'area_um2': pv_area,
             'diameter_um': pv_diameter,
             'wfa_sum_intensity': wfa_s,
+            'wfa_mean_intensity': wfa_mean_soma,
+            'wfa_pericellular_intensity': wfa_mean_ring,
+            'wfa_intensity_norm': wfa_intensity_norm,
+            'wfa_pericellular_norm': wfa_pericellular_norm,
+            'pv_intensity_norm': pv_intensity_norm,
             'is_pnn_plus': False,
             'is_pv_plus': True,
             'pv_label': pv_label,
@@ -405,29 +510,39 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
             'score': 0.0
         })
 
+
     # Save CSV outputs
     df_b = pd.DataFrame(r_batch)
     if df_b.empty:
         df_b = pd.DataFrame(columns=[
             'label', 'centroid_y', 'centroid_x', 'area_um2', 'diameter_um', 
-            'wfa_sum_intensity', 'is_pnn_plus', 'is_pv_plus', 'pv_label',
+            'wfa_sum_intensity', 'wfa_mean_intensity', 'wfa_pericellular_intensity',
+            'wfa_intensity_norm', 'wfa_pericellular_norm', 'pv_intensity_norm',
+            'is_pnn_plus', 'is_pv_plus', 'pv_label',
             'cell_type', 'pv_area_um2', 'pv_diameter_um', 'pnn_area_um2', 'pnn_diameter_um', 'score'
         ])
         
     csv_name = f"{base_name}_nuclei_metrics.csv"
     df_b.to_csv(os.path.join(out_metrics_dir, csv_name), index=False)
 
-    # Save segmented Masks TIFF (4 channels: DAPI, PV, PNN_Mask, WFA_Raw)
+    # Save segmented Masks TIFF (5 channels: DAPI_Mask, PV_Mask, PNN_Mask, Pericellular_Ring_Mask, WFA_Raw)
     stk = np.stack([m_dapi.astype(np.uint16),
                     m_pv.astype(np.uint16),
                     m_wfa.astype(np.uint16),
+                    m_ring.astype(np.uint16),
                     w_raw.astype(np.uint16)], axis=0)
                           
     segm_name = f"{base_name}_masks.tif"
     tiff.imwrite(os.path.join(out_segm_dir, segm_name),
                  stk, imagej=True,
                  metadata={'spacing': px_size, 'unit': 'um', 'Axes': 'CYX',
-                           'Labels': ['DAPI_Mask', 'PV_Mask', 'PNN_Mask', 'WFA_Raw']})
+                           'Labels': ['DAPI_Mask', 'PV_Mask', 'PNN_Mask', 'Pericellular_Ring_Mask', 'WFA_Raw']})
+
+    # Save Power Heatmap Image (Lupori style Energy/Pericellular WFA Intensity Heatmap)
+    power_map_scaled = np.clip(power_map * 255.0, 0, 255).astype(np.uint8)
+    heatmap_color = cv2.applyColorMap(power_map_scaled, cv2.COLORMAP_TURBO)
+    heatmap_path = os.path.join(out_segm_dir, f"{base_name}_power_heatmap.png")
+    cv2.imwrite(heatmap_path, heatmap_color)
 
     # DAPI-centric metrics (for colocalization reference)
     pnn_radius_um = float(calib_data.get('pnn_radius_um', 20.0))
@@ -454,39 +569,89 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
             'is_pnn_plus': is_pnn,
             'is_pv_plus': is_pv_coloc
         })
-        
-    df_dapi = pd.DataFrame(dapi_batch)
-    if df_dapi.empty:
-        df_dapi = pd.DataFrame(columns=[
-            'label', 'centroid_y', 'centroid_x', 'area_um2', 'diameter_um',
-            'dapi_mean_intensity', 'wfa_sum_intensity', 'is_pnn_plus', 'is_pv_plus'
-        ])
-    
-    dapi_csv_name = f"{base_name}_dapi_metrics.csv"
-    df_dapi.to_csv(os.path.join(out_metrics_dir, dapi_csv_name), index=False)
 
-    # Save summary JSON
-    total_pv_segmentation = int(np.max(m_pv)) if np.max(m_pv) > 0 else 0
-    pv_pnn_plus = int(sum(1 for r in r_batch if r['cell_type'] == "PV+/PNN+"))
-    pv_pnn_minus = int(sum(1 for r in r_batch if r['cell_type'] == "PV+/PNN-"))
-    hollow_pnn_plus = int(sum(1 for r in r_batch if r['cell_type'] == "PV-/PNN+"))
-    total_pnn_plus = int(sum(1 for r in r_batch if r['is_pnn_plus']))
-    
-    summary = {
-        "total_dapi": int(np.max(m_dapi)) if np.max(m_dapi) > 0 else 0,
-        "total_pv_segmentation": total_pv_segmentation,
-        "pnn_plus": total_pnn_plus,
-        "pnn_minus": pv_pnn_minus,
-        "dapi_pv_coloc": pv_pnn_plus,
-        "pv_pnn_plus": pv_pnn_plus,
-        "pv_pnn_minus": pv_pnn_minus,
-        "hollow_pnn_plus": hollow_pnn_plus,
-        "total_pnn_plus": total_pnn_plus,
-        "pixel_size": px_size
-    }
-    
-    json_name = f"{base_name}_summary.json"
-    with open(os.path.join(out_metrics_dir, json_name), 'w') as fs:
-        json.dump(summary, fs, indent=4)
+            
+        df_dapi = pd.DataFrame(dapi_batch)
+        if df_dapi.empty:
+            df_dapi = pd.DataFrame(columns=[
+                'label', 'centroid_y', 'centroid_x', 'area_um2', 'diameter_um',
+                'dapi_mean_intensity', 'wfa_sum_intensity', 'is_pnn_plus', 'is_pv_plus'
+            ])
         
-    return summary
+        dapi_csv_name = f"{base_name}_dapi_metrics.csv"
+        df_dapi.to_csv(os.path.join(out_metrics_dir, dapi_csv_name), index=False)
+
+        # Image area in mm^2 (Lupori metric denominator)
+        image_area_mm2 = (H * px_size * W * px_size) / 1e6
+
+        # Summaries & Lupori Global Metrics (Diffuse Fluorescence, Densities & Energies)
+        total_pv_segmentation = int(np.max(m_pv)) if np.max(m_pv) > 0 else 0
+        pv_pnn_plus = int(sum(1 for r in r_batch if r['cell_type'] == "PV+/PNN+"))
+        pv_pnn_minus = int(sum(1 for r in r_batch if r['cell_type'] == "PV+/PNN-"))
+        hollow_pnn_plus = int(sum(1 for r in r_batch if r['cell_type'] == "PV-/PNN+"))
+        total_pnn_plus = int(sum(1 for r in r_batch if r['is_pnn_plus']))
+
+        diffuse_wfa_fluorescence = float(np.mean(w_raw) / max_val_wfa)
+        diffuse_pv_fluorescence = float(np.mean(p_raw) / max_val_pv)
+
+        # Global Integrated WFA Signal Metrics
+        total_integrated_wfa_signal = float(np.sum(w_raw.astype(np.float64)))
+        mean_wfa_intensity_raw = float(np.mean(w_raw))
+        integrated_wfa_density_mm2 = float(np.sum(w_raw.astype(np.float64) / max_val_wfa) / image_area_mm2) if image_area_mm2 > 0 else 0.0
+
+        # Lupori Densities (cells / mm^2)
+        pv_density_mm2 = float(total_pv_segmentation / image_area_mm2) if image_area_mm2 > 0 else 0.0
+        pnn_density_mm2 = float(total_pnn_plus / image_area_mm2) if image_area_mm2 > 0 else 0.0
+        coloc_density_mm2 = float(pv_pnn_plus / image_area_mm2) if image_area_mm2 > 0 else 0.0
+
+        # Lupori Energies (Energy = sum(intensity_norm) / Area_mm2)
+        pv_intensities = [r['pv_intensity_norm'] for r in r_batch if r['is_pv_plus']]
+        pnn_pericell_intensities = [r['wfa_pericellular_norm'] for r in r_batch if r['is_pnn_plus']]
+        coloc_pericell_intensities = [r['wfa_pericellular_norm'] for r in r_batch if r['cell_type'] == "PV+/PNN+"]
+
+        pv_energy = float(np.sum(pv_intensities) / image_area_mm2) if image_area_mm2 > 0 else 0.0
+        pnn_energy = float(np.sum(pnn_pericell_intensities) / image_area_mm2) if image_area_mm2 > 0 else 0.0
+        coloc_energy = float(np.sum(coloc_pericell_intensities) / image_area_mm2) if image_area_mm2 > 0 else 0.0
+
+        # Percentages of colocalization
+        pct_pv_surrounded_by_pnn = (pv_pnn_plus / total_pv_segmentation * 100.0) if total_pv_segmentation > 0 else 0.0
+        pct_pnn_surrounding_pv = (pv_pnn_plus / total_pnn_plus * 100.0) if total_pnn_plus > 0 else 0.0
+
+        summary = {
+            "total_dapi": int(np.max(m_dapi)) if np.max(m_dapi) > 0 else 0,
+            "total_pv_segmentation": total_pv_segmentation,
+            "pnn_plus": total_pnn_plus,
+            "pnn_minus": pv_pnn_minus,
+            "dapi_pv_coloc": pv_pnn_plus,
+            "pv_pnn_plus": pv_pnn_plus,
+            "pv_pnn_minus": pv_pnn_minus,
+            "hollow_pnn_plus": hollow_pnn_plus,
+            "total_pnn_plus": total_pnn_plus,
+            "pixel_size": px_size,
+            "image_area_mm2": image_area_mm2,
+            # Global Integrated WFA Signal
+            "total_integrated_wfa_signal": total_integrated_wfa_signal,
+            "mean_wfa_intensity_raw": mean_wfa_intensity_raw,
+            "integrated_wfa_density_mm2": integrated_wfa_density_mm2,
+            # Lupori et al. Metrics
+            "diffuse_wfa_fluorescence": diffuse_wfa_fluorescence,
+            "diffuse_pv_fluorescence": diffuse_pv_fluorescence,
+            "pv_density_mm2": pv_density_mm2,
+            "pnn_density_mm2": pnn_density_mm2,
+            "coloc_density_mm2": coloc_density_mm2,
+            "pv_energy": pv_energy,
+            "pnn_energy": pnn_energy,
+            "coloc_energy": coloc_energy,
+            "pct_pv_surrounded_by_pnn": pct_pv_surrounded_by_pnn,
+            "pct_pnn_surrounding_pv": pct_pnn_surrounding_pv,
+            "mean_pv_cell_intensity_norm": float(np.mean(pv_intensities)) if pv_intensities else 0.0,
+            "mean_pnn_pericellular_wfa_norm": float(np.mean(pnn_pericell_intensities)) if pnn_pericell_intensities else 0.0,
+            "mean_coloc_pericellular_wfa_norm": float(np.mean(coloc_pericell_intensities)) if coloc_pericell_intensities else 0.0
+        }
+
+        
+        json_name = f"{base_name}_summary.json"
+        with open(os.path.join(out_metrics_dir, json_name), 'w') as fs:
+            json.dump(summary, fs, indent=4)
+            
+        return summary

@@ -498,36 +498,77 @@ if run_btn:
         except Exception as e:
             st.error(f"Error durante la detección: {e}")
 
-# Previsualización
+# Previsualización y Mapa de Potencia (Estilo Lupori et al.)
 st.subheader(f"Muestra seleccionada: `{selected_filename}`")
-col_prev1, col_prev2 = st.columns(2)
+v_tab1, v_tab2, v_tab3 = st.tabs([
+    "🧠 Redes PNN Detectadas",
+    "⭕ Máscaras Pericelulares (Anillos 4µm)",
+    "🔥 Mapa de Calor de Potencia (Lupori Energy Map)"
+])
 
-with col_prev1:
-    st.markdown('<p class="img-caption">Canal WFA Original</p>', unsafe_allow_html=True)
-    st.image(wfa_disp, width="stretch", clamp=True, channels="GRAY")
+heatmap_path = os.path.join(SEGM_DIR, f"{base_fn}_power_heatmap.png")
 
-with col_prev2:
-    st.markdown('<p class="img-caption">Redes PNN Detectadas (IA)</p>', unsafe_allow_html=True)
-    has_pnn_mask = False
-    if os.path.exists(seg_file):
-        try:
-            loaded_masks = tiff.imread(seg_file)
-            num_ch = loaded_masks.shape[0] if len(loaded_masks.shape) == 3 else 1
-            if num_ch >= 5:
-                m_wfa = loaded_masks[4, :, :]
-            elif num_ch >= 3:
-                m_wfa = loaded_masks[2, :, :]
-            else:
-                m_wfa = np.zeros_like(wfa_raw)
-            if np.max(m_wfa) > 0:
-                overlay = label2rgb(m_wfa, image=wfa_disp, bg_label=0, alpha=0.4, image_alpha=1.0)
-                st.image(overlay, width="stretch", clamp=True)
-                has_pnn_mask = True
-        except Exception as e:
-            st.error(f"Error al cargar máscara segmentada: {e}")
-            
-    if not has_pnn_mask:
-        st.info("👈 Ajusta los parámetros y presiona '🧠 Detectar PNNs (WFA)' para ver los resultados.")
+with v_tab1:
+    col_prev1, col_prev2 = st.columns(2)
+    with col_prev1:
+        st.markdown('<p class="img-caption">Canal WFA Original</p>', unsafe_allow_html=True)
+        st.image(wfa_disp, width="stretch", clamp=True, channels="GRAY")
+
+    with col_prev2:
+        st.markdown('<p class="img-caption">Redes PNN Detectadas (IA)</p>', unsafe_allow_html=True)
+        has_pnn_mask = False
+        if os.path.exists(seg_file):
+            try:
+                loaded_masks = tiff.imread(seg_file)
+                num_ch = loaded_masks.shape[0] if len(loaded_masks.shape) == 3 else 1
+                m_pnn_mask = loaded_masks[2, :, :] if num_ch >= 3 else np.zeros_like(wfa_raw)
+                if np.max(m_pnn_mask) > 0:
+                    overlay = label2rgb(m_pnn_mask, image=wfa_disp, bg_label=0, alpha=0.4, image_alpha=1.0)
+                    st.image(overlay, width="stretch", clamp=True)
+                    has_pnn_mask = True
+            except Exception as e:
+                st.error(f"Error al cargar máscara segmentada: {e}")
+                
+        if not has_pnn_mask:
+            st.info("👈 Ajusta los parámetros y presiona '🧠 Detectar PNNs (WFA)' para ver los resultados.")
+
+with v_tab2:
+    col_r1, col_r2 = st.columns(2)
+    with col_r1:
+        st.markdown('<p class="img-caption">Canal WFA + Máscara PNN</p>', unsafe_allow_html=True)
+        if os.path.exists(seg_file):
+            try:
+                loaded_masks = tiff.imread(seg_file)
+                num_ch = loaded_masks.shape[0] if len(loaded_masks.shape) == 3 else 1
+                m_pnn_mask = loaded_masks[2, :, :] if num_ch >= 3 else np.zeros_like(wfa_raw)
+                if np.max(m_pnn_mask) > 0:
+                    overlay_pnn = label2rgb(m_pnn_mask, image=wfa_disp, bg_label=0, alpha=0.5, image_alpha=0.9)
+                    st.image(overlay_pnn, width="stretch", clamp=True)
+            except Exception:
+                pass
+    with col_r2:
+        st.markdown('<p class="img-caption">Zona de Muestreo de Potencia: Anillos Pericelulares (4µm)</p>', unsafe_allow_html=True)
+        if os.path.exists(seg_file):
+            try:
+                loaded_masks = tiff.imread(seg_file)
+                num_ch = loaded_masks.shape[0] if len(loaded_masks.shape) == 3 else 1
+                m_ring_mask = loaded_masks[3, :, :] if num_ch >= 4 else np.zeros_like(wfa_raw)
+
+                if np.max(m_ring_mask) > 0:
+                    overlay_ring = label2rgb(m_ring_mask, image=wfa_disp, bg_label=0, alpha=0.6, image_alpha=0.9)
+                    st.image(overlay_ring, width="stretch", clamp=True)
+                else:
+                    st.info("Ejecuta la detección de PNNs para generar los anillos pericelulares de muestreo.")
+            except Exception as e:
+                st.warning(f"Información de anillos pericelulares no disponible: {e}")
+
+with v_tab3:
+    st.markdown('<p class="img-caption">Mapa de Calor de Potencia Pericelular (Energy / Pericellular WFA Intensity Heatmap - Lupori et al.)</p>', unsafe_allow_html=True)
+    if os.path.exists(heatmap_path):
+        st.image(heatmap_path, caption="Mapa en pseudocolor TURBO (Lupori et al. 2023) representando la Potencia/Intensidad Pericelular de WFA.", width="stretch")
+    else:
+        st.info("El mapa de calor de potencia se genera automáticamente al ejecutar '🧠 Detectar PNNs (WFA)' o el procesamiento batch.")
+
 
 # Inspector de Candidatos
 if os.path.exists(candidates_file):
@@ -623,19 +664,31 @@ if os.path.exists(csv_file):
         df_pnn = df_b[df_b['is_pnn_plus'] == True]
         if not df_pnn.empty:
             st.divider()
-            st.subheader("📊 Descriptores de Redes Perineuronales (PNN+)")
+            st.subheader("📊 Descriptores y Métricas Lupori (PNN+)")
             
-            c_m1, c_m2, c_m3 = st.columns(3)
+            c_m1, c_m2, c_m3, c_m4 = st.columns(4)
             c_m1.metric("Redes PNN+ Detectadas (IA)", f"{len(df_pnn)}")
             c_m2.metric("Área Promedio PNN (µm²)", f"{df_pnn['pnn_area_um2'].mean():.2f}")
-            c_m3.metric("Confianza Promedio", f"{df_pnn['score'].mean():.4f}")
             
             if os.path.exists(json_file):
                 with open(json_file, 'r') as fs:
                     summary_data = json.load(fs)
-                st.write(f"De las PNNs detectadas, **{summary_data.get('pv_pnn_plus', 0)}** colocalizan con interneuronas (PV+/PNN+) y **{summary_data.get('hollow_pnn_plus', 0)}** son huecas (PV-/PNN+).")
+                
+                c_m3.metric("Potencia PNN (Energy)", f"{summary_data.get('pnn_energy', 0.0):.2f}")
+                c_m4.metric("Densidad PNN (PNNs/mm²)", f"{summary_data.get('pnn_density_mm2', 0.0):.1f}")
+                
+                st.info(f"⚡ **Métricas Lupori et al. (2023):**  \n"
+                        f"* **Potencia PNN (Energy):** `{summary_data.get('pnn_energy', 0.0):.2f}`  \n"
+                        f"* **Potencia Coexpresión (PV+/PNN+ Energy):** `{summary_data.get('coloc_energy', 0.0):.2f}`  \n"
+                        f"* **Intensidad WFA Circundante (Ring Norm 0-1):** `{summary_data.get('mean_pnn_pericellular_wfa_norm', 0.0):.4f}`  \n"
+                        f"* **Fluorescencia Difusa WFA:** `{summary_data.get('diffuse_wfa_fluorescence', 0.0):.4f}`  \n"
+                        f"* **Coexpresión:** {summary_data.get('pct_pv_surrounded_by_pnn', 0.0):.1f}% de las células PV+ están rodeadas por PNN+ ({summary_data.get('pv_pnn_plus', 0)} / {summary_data.get('total_pv_segmentation', 0)}).")
+            else:
+                c_m3.metric("Confianza Promedio", f"{df_pnn['score'].mean():.4f}")
             
-            st.markdown("### Tabla de Métricas de PNN+:")
-            st.dataframe(df_pnn.head(100))
+            st.markdown("### Tabla de Métricas de PNN+ (incluye Intensidad Circundante y Normalizada):")
+            cols_to_show = [c for c in ['label', 'cell_type', 'centroid_y', 'centroid_x', 'area_um2', 'diameter_um', 'wfa_mean_intensity', 'wfa_pericellular_intensity', 'wfa_pericellular_norm', 'score'] if c in df_pnn.columns]
+            st.dataframe(df_pnn[cols_to_show].head(100))
     except Exception as e:
         st.warning(f"Error al cargar descriptores de PNN+: {e}")
+

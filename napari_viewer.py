@@ -190,23 +190,26 @@ def main():
                 )
             
     # Agregar las capas de etiquetas (masks)
+    # Agregar las capas de etiquetas (masks)
     if is_masks_file:
         dapi_mask = np.zeros_like(img[0])
         pv_mask = np.zeros_like(img[0])
         wfa_mask = np.zeros_like(img[0])
+        ring_mask = np.zeros_like(img[0])
 
-        if num_channels == 4:
+        if num_channels >= 5:
             dapi_mask = img[0]
             pv_mask = img[1]
             wfa_mask = img[2]
-        elif num_channels >= 5:
+            ring_mask = img[3]
+        elif num_channels == 4:
             dapi_mask = img[0]
             pv_mask = img[1]
-            wfa_mask = img[4]
+            wfa_mask = img[2]
         else:
             if num_channels >= 1: dapi_mask = img[0]
             if num_channels >= 2: pv_mask = img[1]
-            if num_channels >= 4: wfa_mask = img[3]
+            if num_channels >= 3: wfa_mask = img[2]
 
         if args.step == "dapi":
             viewer.add_labels(
@@ -229,6 +232,13 @@ def main():
                 scale=scale,
                 visible=True
             )
+            if np.max(ring_mask) > 0:
+                viewer.add_labels(
+                    ring_mask.astype(np.uint16),
+                    name="Máscara Anillos Pericelulares (4µm - Zona de Potencia)",
+                    scale=scale,
+                    visible=True
+                )
         elif args.step == "all":
             # Dividir dinámicamente la máscara de WFA en Ocupadas (con PV+) y Huecas (sin PV+)
             wfa_labels = np.unique(wfa_mask)
@@ -262,16 +272,24 @@ def main():
             )
             viewer.add_labels(
                 wfa_ocupadas.astype(np.uint16),
-                name="07 - PNN+ Ocupadas → hueco WFA con soma PV+ dentro",
+                name="07 - PNN+ Ocupadas → red WFA con soma PV+ dentro",
                 scale=scale,
                 visible=True
             )
             viewer.add_labels(
                 wfa_huecas.astype(np.uint16),
-                name="08 - PNN+ Huecas → hueco WFA sin soma PV+ (PV-/PNN+)",
+                name="08 - PNN+ Huecas → red WFA sin soma PV+ (PV-/PNN+)",
                 scale=scale,
                 visible=True
             )
+            if np.max(ring_mask) > 0:
+                viewer.add_labels(
+                    ring_mask.astype(np.uint16),
+                    name="09 - Anillos Pericelulares (4µm - Muestreo de Potencia)",
+                    scale=scale,
+                    visible=True
+                )
+
     else:
         # Pilas heredadas
         if num_channels >= 4:

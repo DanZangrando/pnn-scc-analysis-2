@@ -138,46 +138,60 @@ SEX_COLORS  = {'MACHO': '#5bc0de', 'HEMBRA': '#e83e8c'}
 # ─────────────────────────────────────────────────────────────────────────────
 # 1. LOAD NUCLEI AND DAPI METRICS
 # ─────────────────────────────────────────────────────────────────────────────
-@st.cache_data(ttl=10)
-def load_metrics(suffix='_nuclei_metrics.csv'):
-    all_dfs = []
-    if not os.path.exists(METRICS_BASE_DIR):
-        return pd.DataFrame()
-    for root, dirs, files in os.walk(METRICS_BASE_DIR):
-        if "test" in root:
-            continue
-        for f in files:
-            if not f.endswith(suffix):
-                continue
-            csv_path = os.path.join(root, f)
-            rel_path = os.path.relpath(csv_path, METRICS_BASE_DIR)
-            parts = rel_path.split(os.sep)
-            if len(parts) >= 3:
-                group    = parts[0]
-                section  = parts[1]
-                filename = parts[2].replace(suffix, '')
-            else:
-                group = section = "Desconocido"
-                filename = f.replace(suffix, '')
-            m = re.match(r'(ACF_\d+)', filename)
-            animal_id = m.group(1) if m else filename.split('~')[0]
-            m2 = re.search(r'~(\d+)$', filename)
-            corte_num = int(m2.group(1)) if m2 else 1
-            try:
-                df = pd.read_csv(csv_path)
-                if not df.empty:
-                    df['group']      = group
-                    df['section']    = section
-                    df['image_name'] = filename
-                    df['animal_id']  = animal_id
-                    df['corte_num']  = corte_num
-                    all_dfs.append(df)
-            except Exception:
-                pass
-    return pd.concat(all_dfs, ignore_index=True) if all_dfs else pd.DataFrame()
+import pickle
 
-df_raw_nuclei = load_metrics('_nuclei_metrics.csv')
-df_raw_dapi = load_metrics('_dapi_metrics.csv')
+@st.cache_data(ttl=3600)
+def load_all_metrics_cached():
+    cache_file = os.path.join(METRICS_BASE_DIR, "stats_cache.pkl")
+    if os.path.exists(cache_file):
+        try:
+            with open(cache_file, 'rb') as f:
+                payload = pickle.load(f)
+                return payload.get("df_raw_nuclei", pd.DataFrame()), payload.get("df_raw_dapi", pd.DataFrame())
+        except Exception:
+            pass
+            
+    def _read_folder(suffix='_nuclei_metrics.csv'):
+        all_dfs = []
+        if not os.path.exists(METRICS_BASE_DIR):
+            return pd.DataFrame()
+        for root, dirs, files in os.walk(METRICS_BASE_DIR):
+            if "test" in root:
+                continue
+            for f in files:
+                if not f.endswith(suffix):
+                    continue
+                csv_path = os.path.join(root, f)
+                rel_path = os.path.relpath(csv_path, METRICS_BASE_DIR)
+                parts = rel_path.split(os.sep)
+                if len(parts) >= 3:
+                    group    = parts[0]
+                    section  = parts[1]
+                    filename = parts[2].replace(suffix, '')
+                else:
+                    group = section = "Desconocido"
+                    filename = f.replace(suffix, '')
+                m = re.match(r'(ACF_\d+)', filename)
+                animal_id = m.group(1) if m else filename.split('~')[0]
+                m2 = re.search(r'~(\d+)$', filename)
+                corte_num = int(m2.group(1)) if m2 else 1
+                try:
+                    df = pd.read_csv(csv_path)
+                    if not df.empty:
+                        df['group']      = group
+                        df['section']    = section
+                        df['image_name'] = filename
+                        df['animal_id']  = animal_id
+                        df['corte_num']  = corte_num
+                        all_dfs.append(df)
+                except Exception:
+                    pass
+        return pd.concat(all_dfs, ignore_index=True) if all_dfs else pd.DataFrame()
+        
+    return _read_folder('_nuclei_metrics.csv'), _read_folder('_dapi_metrics.csv')
+
+df_raw_nuclei, df_raw_dapi = load_all_metrics_cached()
+
 
 if df_raw_nuclei.empty and df_raw_dapi.empty:
     st.info("👋 No se encontraron métricas. Ejecuta el pipeline primero.")
@@ -269,26 +283,28 @@ else:
 st.sidebar.header("⚙️ Configuración del Análisis")
 level_type = st.sidebar.radio(
     "Nivel de Análisis:",
-    ["Por Célula (distribuciones individuales)",
+    ["Por Sujeto (animal, promediando cortes)",
      "Por Preparado/Corte (imagen)",
-     "Por Sujeto (animal, promediando cortes)"],
+     "Por Célula (distribuciones individuales)"],
+    index=0,
     key="stats_level_select"
 )
-comparison_mode = st.sidebar.radio(
-    "Modo de Comparación:",
-    ["Entre Condiciones (NONE / 3 DÍAS / 14 DÍAS) por Sexo",
-     "IPSI vs CONTRA (Hemisferio)"],
-    key="stats_compare_mode"
-)
 use_bonferroni = st.sidebar.checkbox(
-    "Corrección Bonferroni (×3 comparaciones)",
+    "Corrección Bonferroni (para comparaciones múltiples)",
     value=True, key="stats_bonferroni"
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TABULACIÓN POR PASO
 # ─────────────────────────────────────────────────────────────────────────────
-tab_dapi, tab_pv, tab_pnn = st.tabs(["🧬 Núcleos DAPI (Paso 1)", "🧪 Interneuronas PV+ (Paso 2)", "🧠 Redes Perineuronales PNN (Paso 3)"])
+tab_dapi, tab_pv, tab_pnn, tab_lupori, tab_global_wfa = st.tabs([
+    "🧬 Núcleos DAPI (Paso 1)",
+    "🧪 Interneuronas PV+ (Paso 2)",
+    "🧠 Redes Perineuronales PNN (Paso 3)",
+    "⚡ Métricas Lupori (Potencia y Coexpresión 24/07)",
+    "🌐 Señal Global Integrada WFA"
+])
+
 
 def run_stats_layout(df_base, var_options, selected_var_key, title_lbl):
     # Set group metadata
@@ -302,160 +318,209 @@ def run_stats_layout(df_base, var_options, selected_var_key, title_lbl):
 
     df_base['sex']       = df_base['group'].map(lambda g: group_meta.get(g, {}).get('sex'))
     df_base['condition'] = df_base['group'].map(lambda g: group_meta.get(g, {}).get('condition'))
-    df_base = df_base[df_base['sex'].notna() & df_base['condition'].notna()]
+    df_base = df_base[df_base['sex'].notna() & df_base['condition'].notna() & df_base['section'].isin(['IPSI', 'CONTRA'])]
 
-    if comparison_mode == "Entre Condiciones (NONE / 3 DÍAS / 14 DÍAS) por Sexo":
-        st.subheader(f"📈 {var_options[selected_var_key]} — {title_lbl}")
+    st.subheader(f"📈 {var_options[selected_var_key]} — {title_lbl}")
+
+    if level_type == "Por Sujeto (animal, promediando cortes)":
+        st.markdown("""
+        <div class="level-info">
+        📌 <b>Nivel: Sujeto/Animal</b> — Cada punto representa el promedio de cortes para un animal individual en el hemisferio correspondiente (IPSI o CONTRA).
+        </div>
+        """, unsafe_allow_html=True)
+    elif level_type == "Por Preparado/Corte (imagen)":
+        st.markdown("""
+        <div class="level-info">
+        📌 <b>Nivel: Preparado/Corte</b> — Cada punto representa la métrica total/promedio de una imagen TIFF.
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div class="level-info">
+        📌 <b>Nivel: Célula Individual</b> — Cada punto representa una célula individual detectada.
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Desglose estricto por Sexo (MACHO vs HEMBRA)
+    sexes_in_data = [s for s in ['MACHO', 'HEMBRA'] if s in df_base['sex'].unique()]
+    if not sexes_in_data:
+        sexes_in_data = df_base['sex'].dropna().unique().tolist()
         
-        sexes = [s for s in ['MACHO', 'HEMBRA'] if s in df_base['sex'].unique()]
-        if not sexes:
-            st.warning("No se detectaron grupos con sexo (MACHO/HEMBRA) en los datos.")
-            return
+    sex_groups = [(s, df_base[df_base['sex'] == s]) for s in sexes_in_data]
+    cols = st.columns(len(sex_groups))
 
-        if level_type == "Por Sujeto (animal, promediando cortes)":
-            st.markdown("""
-            <div class="level-info">
-            📌 <b>Nivel: Sujeto/Animal — Comparación entre grupos.</b><br>
-            Cada animal contribuye con 1 punto de dato. Los valores de IPSI y CONTRA se promedian antes de comparar.
-            </div>
-            """, unsafe_allow_html=True)
+    all_intra_results = []
+    all_inter_results = []
+    all_cross_results = []
 
-        sex_cols = st.columns(len(sexes))
-        all_pairwise_results = []
+    SECTION_COLORS = {'IPSI': '#00f2fe', 'CONTRA': '#ff7b00'}
 
-        for col_idx, sex in enumerate(sexes):
-            df_sex = df_base[df_base['sex'] == sex]
-            cond_data = {}
-            for cond in COND_ORDER:
-                vals = df_sex[df_sex['condition'] == cond][selected_var_key].dropna().values
-                if len(vals) > 0:
-                    cond_data[cond] = vals
+    for col_idx, (group_title, df_sub) in enumerate(sex_groups):
+        if df_sub.empty:
+            continue
 
-            if len(cond_data) < 2:
-                with sex_cols[col_idx]:
-                    st.warning(f"Faltan datos suficientes para {sex}.")
-                continue
+        df_sub = df_sub.copy()
+        df_sub['condition'] = pd.Categorical(df_sub['condition'], categories=COND_ORDER, ordered=True)
+        df_plot = df_sub.sort_values('condition')
 
-            cond_list = [c for c in COND_ORDER if c in cond_data]
-            pairs = [(cond_list[i], cond_list[j]) for i in range(len(cond_list)) for j in range(i+1, len(cond_list))]
-            alpha_adj = 0.05 / len(pairs) if use_bonferroni else 0.05
+        fig = go.Figure()
 
-            pair_results = []
-            for ca, cb in pairs:
-                stat, p = run_mwu(cond_data[ca], cond_data[cb])
-                p_adj = p * len(pairs) if use_bonferroni and not np.isnan(p) else p
-                stars = sig_stars(p_adj if use_bonferroni else p, alpha=0.05)
-                pair_results.append({'A': ca, 'B': cb, 'p_raw': p, 'p_adj': p_adj, 'stars': stars})
-                all_pairwise_results.append({
-                    'Sexo': sex, 'Comparación': f"{ca} vs {cb}",
-                    'N_A': len(cond_data[ca]), 'N_B': len(cond_data[cb]),
-                    'p (raw)': round(p, 4) if not np.isnan(p) else '-',
-                    'p (adj Bonf.)': round(p_adj, 4) if not np.isnan(p_adj) else '-',
+        present_conds = [c for c in COND_ORDER if c in df_plot['condition'].unique()]
+        present_secs = [s for s in ['IPSI', 'CONTRA'] if s in df_plot['section'].unique()]
+
+        for sec in present_secs:
+            df_sec = df_plot[df_plot['section'] == sec]
+            color = SECTION_COLORS.get(sec, '#ffffff')
+            fig.add_trace(go.Box(
+                x=df_sec['condition'],
+                y=df_sec[selected_var_key],
+                name=f"{sec}",
+                marker_color=color,
+                boxmean='sd',
+                boxpoints='all',
+                jitter=0.35,
+                pointpos=0,
+                marker=dict(size=6, opacity=0.8, color=color),
+                line=dict(color=color, width=2)
+            ))
+
+        fig.update_layout(
+            title=dict(text=f"<b>{group_title} — IPSI vs CONTRA por Condición</b>", font=dict(size=16, color=SEX_COLORS.get(group_title, '#bb86fc'))),
+            yaxis_title=var_options[selected_var_key],
+            xaxis_title="Condición Experimental",
+            boxmode='group',
+            template='plotly_dark',
+            height=480,
+            legend=dict(title="Hemisferio", orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+
+        with cols[col_idx]:
+            st.plotly_chart(fig, use_container_width=True)
+
+        # ───────── CALCULAR ESTADÍSTICAS SIN PROMEDIAR SEXOS NI HEMISFERIOS ─────────
+        # 1. INTRA-CONDICIÓN: IPSI vs CONTRA en cada condición (Mismo Sexo)
+        for cond in present_conds:
+            df_cond = df_sub[df_sub['condition'] == cond]
+            val_ipsi = df_cond[df_cond['section'] == 'IPSI'][selected_var_key].dropna().values
+            val_contra = df_cond[df_cond['section'] == 'CONTRA'][selected_var_key].dropna().values
+
+            if len(val_ipsi) >= 2 and len(val_contra) >= 2:
+                # Prueba pareada si hay animal_id pareado
+                if 'animal_id' in df_cond.columns and level_type != "Por Célula (distribuciones individuales)":
+                    merged_p = pd.merge(
+                        df_cond[df_cond['section'] == 'IPSI'][['animal_id', selected_var_key]].rename(columns={selected_var_key: 'v_ipsi'}),
+                        df_cond[df_cond['section'] == 'CONTRA'][['animal_id', selected_var_key]].rename(columns={selected_var_key: 'v_contra'}),
+                        on='animal_id'
+                    ).dropna()
+                    if len(merged_p) >= 3:
+                        stat, p = wilcoxon(merged_p['v_ipsi'].values, merged_p['v_contra'].values)
+                        test_type = "Wilcoxon Pareado"
+                    else:
+                        stat, p = run_mwu(val_ipsi, val_contra)
+                        test_type = "Mann-Whitney U"
+                else:
+                    stat, p = run_mwu(val_ipsi, val_contra)
+                    test_type = "Mann-Whitney U"
+
+                stars = sig_stars(p)
+                all_intra_results.append({
+                    'Sexo': group_title,
+                    'Condición': cond,
+                    'IPSI (Media ± DE)': f"{np.mean(val_ipsi):.2f} ± {np.std(val_ipsi):.2f} (N={len(val_ipsi)})",
+                    'CONTRA (Media ± DE)': f"{np.mean(val_contra):.2f} ± {np.std(val_contra):.2f} (N={len(val_contra)})",
+                    'Prueba': test_type,
+                    'Estadístico (W/U)': f"{stat:.2f}" if not np.isnan(stat) else '-',
+                    'p-valor': round(p, 4) if not np.isnan(p) else '-',
                     'Significancia': stars
                 })
 
-            fig = go.Figure()
-            for cond in cond_list:
-                vals = cond_data[cond]
-                color = COND_COLORS.get(cond, '#aaaaaa')
-                fig.add_trace(go.Box(
-                    y=vals, name=cond,
-                    marker_color=color,
-                    boxmean='sd',
-                    line=dict(color=color, width=2),
-                    fillcolor=f'rgba({int(color[1:3],16)},{int(color[3:5],16)},{int(color[5:7],16)},0.18)',
-                    boxpoints='all',
-                    jitter=0.35,
-                    pointpos=0,
-                    marker=dict(size=6, opacity=0.7, color=color),
-                    showlegend=False
-                ))
+        # 2. INTER-CONDICIÓN: NONE vs 3 DÍAS vs 14 DÍAS dentro de IPSI y dentro de CONTRA
+        for sec in present_secs:
+            df_sec = df_sub[df_sub['section'] == sec]
+            cond_data = {}
+            for c in COND_ORDER:
+                vals = df_sec[df_sec['condition'] == c][selected_var_key].dropna().values
+                if len(vals) > 0:
+                    cond_data[c] = vals
 
-            y_max = max(v.max() for v in cond_data.values() if len(v) > 0)
-            x_positions = {cond: i for i, cond in enumerate(cond_list)}
-            bar_level = 0
-            for pr in pair_results:
-                if pr['stars'] == 'N/A': continue
-                bar_color = '#00ff88' if pr['stars'] not in ('ns', 'N/A') else '#666666'
-                add_significance_bar(fig, x_positions[pr['A']], x_positions[pr['B']], y_max, pr['stars'], color=bar_color, row_offset=bar_level)
-                bar_level += 1
+            cond_present = [c for c in COND_ORDER if c in cond_data]
+            pairs = [(cond_present[i], cond_present[j]) for i in range(len(cond_present)) for j in range(i+1, len(cond_present))]
 
-            fig.update_layout(
-                title=dict(text=f"<b>{sex}</b>", font=dict(size=16, color=SEX_COLORS[sex])),
-                yaxis_title=var_options[selected_var_key],
-                xaxis=dict(title="Condición"),
-                template='plotly_dark',
-                height=450,
-                yaxis=dict(range=[0, y_max * 1.35])
-            )
-            with sex_cols[col_idx]:
-                st.plotly_chart(fig)
-                st.markdown('<div class="stats-box">', unsafe_allow_html=True)
-                for cond in cond_list:
-                    vals = cond_data[cond]
-                    st.write(f"**{cond}** (N={len(vals)}): Media=`{np.mean(vals):.2f}` ± `{np.std(vals):.2f}`")
-                st.markdown('</div>', unsafe_allow_html=True)
+            for ca, cb in pairs:
+                stat, p = run_mwu(cond_data[ca], cond_data[cb])
+                p_adj = p * len(pairs) if use_bonferroni and not np.isnan(p) else p
+                stars = sig_stars(p_adj if use_bonferroni else p)
+                all_inter_results.append({
+                    'Sexo': group_title,
+                    'Hemisferio': sec,
+                    'Comparación': f"{ca} vs {cb}",
+                    'Media A': f"{np.mean(cond_data[ca]):.2f} (N={len(cond_data[ca])})",
+                    'Media B': f"{np.mean(cond_data[cb]):.2f} (N={len(cond_data[cb])})",
+                    'p-valor (raw)': round(p, 4) if not np.isnan(p) else '-',
+                    'p-valor (adj Bonf.)': round(p_adj, 4) if not np.isnan(p_adj) else '-',
+                    'Significancia': stars
+                })
 
-        if all_pairwise_results:
-            st.write("### Tabla de Significancias")
-            st.dataframe(pd.DataFrame(all_pairwise_results), hide_index=True)
+        # 3. COMPARACIONES CRUZADAS (IPSI de condición A vs CONTRA de condición B)
+        cond_sec_pairs = []
+        for c in present_conds:
+            for s in present_secs:
+                vals = df_sub[(df_sub['condition'] == c) & (df_sub['section'] == s)][selected_var_key].dropna().values
+                if len(vals) > 0:
+                    cond_sec_pairs.append((f"{c} ({s})", vals))
 
-    else:
-        # IPSI vs CONTRA Mode
-        st.subheader(f"📈 {var_options[selected_var_key]} — Hemisferios IPSI vs CONTRA")
-        factor_col = "section"
-        categories = sorted(df_base[factor_col].dropna().unique())
-        if len(categories) < 2:
-            st.warning("Se necesitan al menos IPSI y CONTRA en las subcarpetas para comparar.")
-            return
+        for i in range(len(cond_sec_pairs)):
+            for j in range(i+1, len(cond_sec_pairs)):
+                label_a, vals_a = cond_sec_pairs[i]
+                label_b, vals_b = cond_sec_pairs[j]
+                stat, p = run_mwu(vals_a, vals_b)
+                p_adj = p * (len(cond_sec_pairs)*(len(cond_sec_pairs)-1)/2) if use_bonferroni and not np.isnan(p) else p
+                stars = sig_stars(p_adj if use_bonferroni else p)
+                all_cross_results.append({
+                    'Sexo': group_title,
+                    'Grupo A': label_a,
+                    'Grupo B': label_b,
+                    'Media A': f"{np.mean(vals_a):.2f} (N={len(vals_a)})",
+                    'Media B': f"{np.mean(vals_b):.2f} (N={len(vals_b)})",
+                    'p-valor (raw)': round(p, 4) if not np.isnan(p) else '-',
+                    'p-valor (adj Bonf.)': round(p_adj, 4) if not np.isnan(p_adj) else '-',
+                    'Significancia': stars
+                })
 
-        cat_a, cat_b = "IPSI", "CONTRA"
-        if "IPSI" not in categories or "CONTRA" not in categories:
-            cat_a, cat_b = categories[0], categories[1]
+    # Render Tables
+    st.markdown("---")
+    st.markdown("### 📊 Pruebas de Significancia Estadística (Macho vs Hembra Separados)")
 
-        df_a = df_base[df_base[factor_col] == cat_a]
-        df_b = df_base[df_base[factor_col] == cat_b]
-        data_a = df_a[selected_var_key].dropna().values
-        data_b = df_b[selected_var_key].dropna().values
+    t_col1, t_col2, t_col3 = st.tabs([
+        "🔴 Intra-Grupo: IPSI vs CONTRA (en cada condición)",
+        "🔵 Inter-Grupo: Evolución Temporal (por Hemisferio)",
+        "🌐 Comparaciones Cruzadas (IPSI de A vs CONTRA de B)"
+    ])
 
-        paired_data = None
-        if level_type != "Por Célula (distribuciones individuales)" and 'animal_id' in df_base.columns:
-            va = df_a[['animal_id', selected_var_key]].rename(columns={selected_var_key: 'val_a'})
-            vb = df_b[['animal_id', selected_var_key]].rename(columns={selected_var_key: 'val_b'})
-            merged = pd.merge(va, vb, on='animal_id').dropna()
-            if len(merged) >= 3:
-                paired_data = merged
+    with t_col1:
+        st.markdown("#### ⚖️ Comparación Intra-Grupo (IPSI vs CONTRA dentro de cada condición)")
+        if all_intra_results:
+            df_intra = pd.DataFrame(all_intra_results)
+            st.dataframe(df_intra, use_container_width=True, hide_index=True)
+        else:
+            st.info("No hay suficientes datos para realizar pruebas intra-grupo.")
 
-        col_plot, col_stats = st.columns([2, 1])
-        with col_plot:
-            if paired_data is not None:
-                fig = go.Figure()
-                for _, row in paired_data.iterrows():
-                    fig.add_trace(go.Scatter(
-                        x=[cat_a, cat_b], y=[row['val_a'], row['val_b']],
-                        mode='lines+markers', name=row['animal_id'],
-                        line=dict(color='rgba(187,134,252,0.45)', width=2),
-                        marker=dict(size=9)
-                    ))
-                fig.update_layout(title="Pareado IPSI ↔ CONTRA por Sujeto", template='plotly_dark', height=450)
-                st.plotly_chart(fig)
-            else:
-                df_plot = df_base[df_base[factor_col].isin([cat_a, cat_b])]
-                fig = px.box(df_plot, x=factor_col, y=selected_var_key, color=factor_col, points='all', template='plotly_dark')
-                st.plotly_chart(fig)
+    with t_col2:
+        st.markdown("#### ⏳ Comparación Inter-Grupo entre Condiciones (mismo hemisferio)")
+        if all_inter_results:
+            df_inter = pd.DataFrame(all_inter_results)
+            st.dataframe(df_inter, use_container_width=True, hide_index=True)
+        else:
+            st.info("No hay suficientes datos para realizar pruebas inter-grupo.")
 
-        with col_stats:
-            st.markdown('<div class="stats-box">', unsafe_allow_html=True)
-            st.write(f"**🔵 {cat_a}** (N={len(data_a)}): Media=`{np.mean(data_a):.2f}` ± `{np.std(data_a):.2f}`")
-            st.write(f"**🟣 {cat_b}** (N={len(data_b)}): Media=`{np.mean(data_b):.2f}` ± `{np.std(data_b):.2f}`")
-            st.markdown('</div>', unsafe_allow_html=True)
+    with t_col3:
+        st.markdown("#### 🌐 Matriz Completa de Comparaciones Cruzadas (Condición x Hemisferio)")
+        if all_cross_results:
+            df_cross = pd.DataFrame(all_cross_results)
+            st.dataframe(df_cross, use_container_width=True, hide_index=True)
+        else:
+            st.info("No hay suficientes datos para comparaciones cruzadas.")
 
-            if paired_data is not None and len(paired_data) >= 3:
-                stat, p_val = wilcoxon(paired_data['val_a'].values, paired_data['val_b'].values)
-                st.success(f"Prueba Wilcoxon (Pareado): p-val = `{p_val:.4f}` ({sig_stars(p_val)})")
-            else:
-                stat, p_val = run_mwu(data_a, data_b)
-                st.success(f"Prueba Mann-Whitney U: p-val = `{p_val:.4f}` ({sig_stars(p_val)})")
 
 # 1. TAB DAPI
 with tab_dapi:
@@ -463,50 +528,49 @@ with tab_dapi:
         st.info("No hay datos de DAPI disponibles.")
     else:
         st.header("Análisis de Núcleos DAPI (Paso 1)")
-        CELL_DAPI_VARS = {
-            "area_um2": "Área del Núcleo DAPI (µm²)",
-            "diameter_um": "Diámetro del Núcleo DAPI (µm)",
-            "dapi_mean_intensity": "Intensidad Media DAPI"
-        }
-        IMG_DAPI_VARS = {
+        ALL_DAPI_VARS = {
             "dapi_count": "N° de núcleos DAPI por corte",
             "mean_dapi_area_um2": "Área Promedio del Núcleo DAPI (µm²)",
             "mean_dapi_diameter_um": "Diámetro Promedio del Núcleo DAPI (µm)",
-            "mean_dapi_intensity": "Intensidad DAPI Promedio"
+            "mean_dapi_intensity": "Intensidad DAPI Promedio",
+            "area_um2": "Área del Núcleo DAPI (µm²) — por Célula",
+            "diameter_um": "Diámetro del Núcleo DAPI (µm) — por Célula",
+            "dapi_mean_intensity": "Intensidad Media DAPI — por Célula"
         }
         
-        dapi_vars = CELL_DAPI_VARS if level_type == "Por Célula (distribuciones individuales)" else IMG_DAPI_VARS
-        selected_dapi_var = st.selectbox("Variable DAPI:", list(dapi_vars.keys()), format_func=lambda x: dapi_vars[x], key="dapi_var")
+        selected_dapi_var = st.selectbox("Variable DAPI:", list(ALL_DAPI_VARS.keys()), format_func=lambda x: ALL_DAPI_VARS[x], key="dapi_var")
 
-        # Aggregate DAPI
-        if level_type == "Por Célula (distribuciones individuales)":
+        # Aggregate DAPI dynamically based on selected variable
+        is_cell_var = selected_dapi_var in ["area_um2", "diameter_um", "dapi_mean_intensity"]
+        if is_cell_var and level_type == "Por Célula (distribuciones individuales)":
             df_dapi_base = df_raw_dapi.copy()
         elif level_type == "Por Preparado/Corte (imagen)":
-            # Aggregate DAPI by image
             def _dapi_img(grp):
                 return pd.Series({
                     'dapi_count': len(grp),
                     'mean_dapi_area_um2': grp['area_um2'].mean(),
                     'mean_dapi_diameter_um': grp['diameter_um'].mean(),
-                    'mean_dapi_intensity': grp['dapi_mean_intensity'].mean()
+                    'mean_dapi_intensity': grp['dapi_mean_intensity'].mean(),
+                    'area_um2': grp['area_um2'].mean(),
+                    'diameter_um': grp['diameter_um'].mean(),
+                    'dapi_mean_intensity': grp['dapi_mean_intensity'].mean()
                 })
             df_dapi_base = df_raw_dapi.groupby(['group','section','image_name','animal_id','corte_num']).apply(_dapi_img).reset_index()
         else:
-            # Por Sujeto
             def _dapi_img(grp):
                 return pd.Series({
                     'dapi_count': len(grp),
                     'mean_dapi_area_um2': grp['area_um2'].mean(),
                     'mean_dapi_diameter_um': grp['diameter_um'].mean(),
-                    'mean_dapi_intensity': grp['dapi_mean_intensity'].mean()
+                    'mean_dapi_intensity': grp['dapi_mean_intensity'].mean(),
+                    'area_um2': grp['area_um2'].mean(),
+                    'diameter_um': grp['diameter_um'].mean(),
+                    'dapi_mean_intensity': grp['dapi_mean_intensity'].mean()
                 })
             df_dapi_img = df_raw_dapi.groupby(['group','section','image_name','animal_id','corte_num']).apply(_dapi_img).reset_index()
-            if comparison_mode == "Entre Condiciones (NONE / 3 DÍAS / 14 DÍAS) por Sexo":
-                df_dapi_base = df_dapi_img.groupby(['group', 'animal_id']).mean(numeric_only=True).reset_index()
-            else:
-                df_dapi_base = df_dapi_img.groupby(['group', 'section', 'animal_id']).mean(numeric_only=True).reset_index()
+            df_dapi_base = df_dapi_img.groupby(['group', 'section', 'animal_id']).mean(numeric_only=True).reset_index()
 
-        run_stats_layout(df_dapi_base, dapi_vars, selected_dapi_var, "Núcleos DAPI")
+        run_stats_layout(df_dapi_base, ALL_DAPI_VARS, selected_dapi_var, "Núcleos DAPI")
 
 # 2. TAB PV+
 with tab_pv:
@@ -514,28 +578,29 @@ with tab_pv:
         st.info("No hay datos de PV+ disponibles.")
     else:
         st.header("Análisis de Interneuronas PV+ (Paso 2)")
-        CELL_PV_VARS = {
-            "pv_area_um2": "Área del Soma PV+ (µm²)",
-            "pv_diameter_um": "Diámetro del Soma PV+ (µm)"
-        }
-        IMG_PV_VARS = {
+        ALL_PV_VARS = {
             "pv_count": "N° de Somas PV+ por corte",
             "mean_pv_area_um2": "Área Promedio Soma PV+ (µm²)",
-            "mean_pv_diameter_um": "Diámetro Promedio Soma PV+ (µm)"
+            "mean_pv_diameter_um": "Diámetro Promedio Soma PV+ (µm)",
+            "pv_area_um2": "Área del Soma PV+ (µm²) — por Célula",
+            "pv_diameter_um": "Diámetro del Soma PV+ (µm) — por Célula"
         }
         
-        pv_vars = CELL_PV_VARS if level_type == "Por Célula (distribuciones individuales)" else IMG_PV_VARS
-        selected_pv_var = st.selectbox("Variable PV+:", list(pv_vars.keys()), format_func=lambda x: pv_vars[x], key="pv_var")
+        selected_pv_var = st.selectbox("Variable PV+:", list(ALL_PV_VARS.keys()), format_func=lambda x: ALL_PV_VARS[x], key="pv_var")
 
-        # Aggregate PV+ (filter is_pv_plus == True for cell level)
-        if level_type == "Por Célula (distribuciones individuales)":
+        is_cell_var = selected_pv_var in ["pv_area_um2", "pv_diameter_um"]
+        if is_cell_var and level_type == "Por Célula (distribuciones individuales)":
             df_pv_base = df_raw_nuclei[df_raw_nuclei['is_pv_plus'] == True].copy()
-        elif level_type == "Por Preparado/Corte (imagen)":
+        elif level_type == "Por Preparado/Corte (imagen)" or not is_cell_var:
             df_pv_base = df_img.copy()
+            if selected_pv_var == "pv_area_um2": df_pv_base['pv_area_um2'] = df_pv_base['mean_pv_area_um2']
+            if selected_pv_var == "pv_diameter_um": df_pv_base['pv_diameter_um'] = df_pv_base['mean_pv_diameter_um']
         else:
-            df_pv_base = df_subj_btwn.copy() if comparison_mode == "Entre Condiciones (NONE / 3 DÍAS / 14 DÍAS) por Sexo" else df_subj.copy()
+            df_pv_base = df_subj.copy()
+            if selected_pv_var == "pv_area_um2": df_pv_base['pv_area_um2'] = df_pv_base['mean_pv_area_um2']
+            if selected_pv_var == "pv_diameter_um": df_pv_base['pv_diameter_um'] = df_pv_base['mean_pv_diameter_um']
 
-        run_stats_layout(df_pv_base, pv_vars, selected_pv_var, "Interneuronas PV+")
+        run_stats_layout(df_pv_base, ALL_PV_VARS, selected_pv_var, "Interneuronas PV+")
 
 # 3. TAB PNN
 with tab_pnn:
@@ -543,31 +608,125 @@ with tab_pnn:
         st.info("No hay datos de PNN disponibles.")
     else:
         st.header("Análisis de Redes Perineuronales PNN (Paso 3)")
-        CELL_PNN_VARS = {
-            "pnn_area_um2": "Área de PNN (µm²)",
-            "pnn_diameter_um": "Diámetro de PNN (µm)",
-            "score": "Confianza PNNscore (IA)"
-        }
-        IMG_PNN_VARS = {
+        ALL_PNN_VARS = {
             "pnn_count": "N° de Redes PNN+ Totales",
             "pnn_count_filled": "N° de PNN+ Ocupadas (PV+/PNN+)",
             "pnn_count_hollow": "N° de PNN+ Huecas (PNN+/PV-)",
-            "pct_pnn_plus": "% de PV+ con Red PNN (Ocupadas)",
+            "pct_pnn_plus": "% de PV+ con Red PNN (Coexpresión)",
             "pct_pnn_hollow": "% de PNN+ que son Huecas",
             "mean_pnn_area_um2": "Área Promedio de PNN (µm²)",
             "mean_pnn_diameter_um": "Diámetro Promedio de PNN (µm)",
-            "mean_score": "Confianza Promedio (PNNscore)"
+            "mean_score": "Confianza Promedio (PNNscore)",
+            "pnn_area_um2": "Área de PNN (µm²) — por Célula",
+            "pnn_diameter_um": "Diámetro de PNN (µm) — por Célula",
+            "score": "Confianza PNNscore (IA) — por Célula"
         }
 
-        pnn_vars = CELL_PNN_VARS if level_type == "Por Célula (distribuciones individuales)" else IMG_PNN_VARS
-        selected_pnn_var = st.selectbox("Variable PNN:", list(pnn_vars.keys()), format_func=lambda x: pnn_vars[x], key="pnn_var")
+        selected_pnn_var = st.selectbox("Variable PNN:", list(ALL_PNN_VARS.keys()), format_func=lambda x: ALL_PNN_VARS[x], key="pnn_var")
 
-        # Aggregate PNN (filter is_pnn_plus == True for cell level)
-        if level_type == "Por Célula (distribuciones individuales)":
+        is_cell_var = selected_pnn_var in ["pnn_area_um2", "pnn_diameter_um", "score"]
+        if is_cell_var and level_type == "Por Célula (distribuciones individuales)":
             df_pnn_base = df_raw_nuclei[df_raw_nuclei['is_pnn_plus'] == True].copy()
-        elif level_type == "Por Preparado/Corte (imagen)":
+        elif level_type == "Por Preparado/Corte (imagen)" or not is_cell_var:
             df_pnn_base = df_img.copy()
+            if selected_pnn_var == "pnn_area_um2": df_pnn_base['pnn_area_um2'] = df_pnn_base['mean_pnn_area_um2']
+            if selected_pnn_var == "pnn_diameter_um": df_pnn_base['pnn_diameter_um'] = df_pnn_base['mean_pnn_diameter_um']
+            if selected_pnn_var == "score": df_pnn_base['score'] = df_pnn_base['mean_score']
         else:
-            df_pnn_base = df_subj_btwn.copy() if comparison_mode == "Entre Condiciones (NONE / 3 DÍAS / 14 DÍAS) por Sexo" else df_subj.copy()
+            df_pnn_base = df_subj.copy()
+            if selected_pnn_var == "pnn_area_um2": df_pnn_base['pnn_area_um2'] = df_pnn_base['mean_pnn_area_um2']
+            if selected_pnn_var == "pnn_diameter_um": df_pnn_base['pnn_diameter_um'] = df_pnn_base['mean_pnn_diameter_um']
+            if selected_pnn_var == "score": df_pnn_base['score'] = df_pnn_base['mean_score']
 
-        run_stats_layout(df_pnn_base, pnn_vars, selected_pnn_var, "Redes Perineuronales PNN")
+        run_stats_layout(df_pnn_base, ALL_PNN_VARS, selected_pnn_var, "Redes Perineuronales PNN")
+
+# 4. TAB LUPORI METRICS (POTENCIA, DENSIDAD, ENERGÍA Y COEXPRESIÓN 24/07)
+with tab_lupori:
+    st.header("⚡ Cuantificación Método Lupori et al. (2023)")
+    st.markdown("""
+    **Métricas Oficiales:**
+    * **Densidad (Density):** $N^\circ \text{de células o PNNs / mm}^2$
+    * **Potencia (Energy):** $\text{Densidad} \times \text{Intensidad Promedio Normalizada (0-1)} = \frac{\sum \text{intensity}_i}{\text{Área mm}^2}$
+    * **Intensidad Circundante WFA:** Intensidad medida en el anillo de expansión perineuronal ($3\text{--}5\,\mu\text{m}$) alrededor del soma.
+    * **Coexpresión:** $\%$ de células PV+ que están rodeadas por una red PNN+.
+    """)
+
+    cons_csv = os.path.join(METRICS_BASE_DIR, "consolidated_lupori_metrics.csv")
+    if os.path.exists(cons_csv):
+        try:
+            df_lup = pd.read_csv(cons_csv)
+            if 'animal_id' not in df_lup.columns:
+                df_lup['animal_id'] = df_lup['filename'].apply(lambda fn: re.match(r'(ACF_\d+)', str(fn)).group(1) if re.match(r'(ACF_\d+)', str(fn)) else str(fn).split('~')[0])
+            
+            st.success(f"✅ Carga instantánea de la cuantificación Lupori con **{len(df_lup)}** preparados.")
+            
+            LUPORI_VARS = {
+                "pnn_energy": "Potencia PNN (Energy)",
+                "coloc_energy": "Potencia Coexpresión PV+/PNN+ (Energy)",
+                "pnn_density_mm2": "Densidad de PNN+ (redes / mm²)",
+                "pv_density_mm2": "Densidad de PV+ (células / mm²)",
+                "coloc_density_mm2": "Densidad de Coexpresión (células PV+/PNN+ / mm²)",
+                "pct_pv_surrounded_by_pnn": "% PV+ rodeadas por PNN+ (Coexpresión)",
+                "mean_pnn_pericellular_wfa_norm": "Intensidad WFA Circundante (Norm 0-1)",
+                "diffuse_wfa_fluorescence": "Fluorescencia Difusa WFA (Norm 0-1)"
+            }
+            
+            sel_lup_var = st.selectbox("Seleccionar Métricas Lupori:", list(LUPORI_VARS.keys()), format_func=lambda x: LUPORI_VARS[x], key="lup_var")
+            
+            run_stats_layout(df_lup_base, LUPORI_VARS, sel_lup_var, "Métricas Lupori et al.")
+            
+            st.markdown("### 📋 Tabla Completa Consolidada Lupori (24/07):")
+            st.dataframe(df_lup)
+        except Exception as e:
+            st.error(f"Error al cargar tabla consolidada Lupori: {e}")
+    else:
+        st.info("⚠️ La cuantificación en lote `consolidated_lupori_metrics.csv` no se encuentra. Ejecuta `uv run python batch_processing.py` para construirla.")
+
+# 5. TAB SEÑAL GLOBAL INTEGRADA WFA
+with tab_global_wfa:
+    st.header("🌐 Señal Global Integrada de WFA")
+    st.markdown("""
+    **Medición de Fluorescencia Global Integrada:**
+    * **Señal Global Integrada WFA ($\sum \text{Intensidad}$):** Suma total de fluorescencia acumulada del canal WFA a través de todo el tejido del preparado.
+    * **Densidad de Señal Integrada por $\text{mm}^2$:** Intensidad WFA integrada dividida entre el área total del preparado en $\text{mm}^2$.
+    * **Fluorescencia Difusa/Global WFA:** Intensidad promedio global normalizada ($0\text{--}1$) en el canal WFA.
+    """)
+
+    cons_csv = os.path.join(METRICS_BASE_DIR, "consolidated_lupori_metrics.csv")
+    if os.path.exists(cons_csv):
+        try:
+            df_gwfa = pd.read_csv(cons_csv)
+            if 'animal_id' not in df_gwfa.columns:
+                df_gwfa['animal_id'] = df_gwfa['filename'].apply(lambda fn: re.match(r'(ACF_\d+)', str(fn)).group(1) if re.match(r'(ACF_\d+)', str(fn)) else str(fn).split('~')[0])
+
+            GLOBAL_WFA_VARS = {
+                "total_integrated_wfa_signal": "Señal Global Integrada WFA (Suma Total Intensidad)",
+                "integrated_wfa_density_mm2": "Densidad de Señal Integrada WFA por mm²",
+                "mean_wfa_intensity_raw": "Intensidad Media Global WFA (Raw)",
+                "diffuse_wfa_fluorescence": "Fluorescencia Difusa/Global WFA (Norm 0-1)"
+            }
+
+            # Filter present columns or compute fallback
+            avail_wfa_vars = {k: v for k, v in GLOBAL_WFA_VARS.items() if k in df_gwfa.columns}
+            if not avail_wfa_vars:
+                avail_wfa_vars = {"diffuse_wfa_fluorescence": "Fluorescencia Difusa/Global WFA (Norm 0-1)"}
+
+            sel_gwfa_var = st.selectbox("Seleccionar Métrica de Señal Global WFA:", list(avail_wfa_vars.keys()), format_func=lambda x: avail_wfa_vars[x], key="gwfa_var")
+
+            if level_type == "Por Sujeto (animal, promediando cortes)":
+                df_gwfa_base = df_gwfa.groupby(['group', 'section', 'animal_id']).mean(numeric_only=True).reset_index()
+            else:
+                df_gwfa_base = df_gwfa.copy()
+
+            run_stats_layout(df_gwfa_base, avail_wfa_vars, sel_gwfa_var, "Señal Global Integrada WFA")
+
+            st.markdown("### 📋 Tabla Consolidada de Señal Global WFA:")
+            st.dataframe(df_gwfa)
+        except Exception as e:
+            st.error(f"Error al cargar métricas de Señal Global WFA: {e}")
+    else:
+        st.info("⚠️ La cuantificación en lote `consolidated_lupori_metrics.csv` no se encuentra. Ejecuta `uv run python batch_processing.py` para construirla.")
+
+
+
+
