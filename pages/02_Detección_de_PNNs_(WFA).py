@@ -24,7 +24,7 @@ if src_path not in sys.path:
 
 from image_io import load_channels_tif, get_or_create_mip
 from ai_models import load_models
-from pipeline_runner import run_pipeline_on_file
+from pipeline_runner import run_pipeline_on_file, normalize_wfa_for_detection
 from omegaconf import OmegaConf
 
 st.set_page_config(page_title="Paso 3: Detección de PNNs (WFA)", layout="wide")
@@ -142,6 +142,31 @@ tile_size = st.sidebar.select_slider("Tamaño de tile (px)", options=[256, 512, 
 tile_overlap = st.sidebar.slider("Overlap entre tiles (px)", 16, 128, int(calib_data.get('lupori_tile_overlap', 32)), step=16)
 soma_erosion_um = st.sidebar.slider("Erosión de Soma (µm)", 0.0, 4.0, float(calib_data.get('soma_erosion_um', 1.5)), step=0.1)
 
+st.sidebar.markdown("---")
+st.sidebar.subheader("🌟 Normalización de Intensidad WFA (IA)")
+wfa_norm_options = [
+    "Percentil Robusto (1-99.5%)",
+    "CLAHE (Adaptativo Local)",
+    "Percentil Agresivo (0.5-99.8%)",
+    "Min-Max Estándar (0-1)",
+    "Ninguno (Raw)"
+]
+default_wfa_norm = calib_data.get('wfa_norm_method', "Percentil Robusto (1-99.5%)")
+idx_wfa_norm = wfa_norm_options.index(default_wfa_norm) if default_wfa_norm in wfa_norm_options else 0
+
+wfa_norm_method = st.sidebar.selectbox(
+    "Preprocesamiento WFA (Inferencia IA):",
+    wfa_norm_options,
+    index=idx_wfa_norm,
+    help="Aplica normalización y estiramiento de contraste dinámico al canal WFA exclusivamente durante la detección de PNNs para detectar redes de baja intensidad. Las intensidades biológicas originales no se alteran."
+)
+
+wfa_gamma = st.sidebar.slider(
+    "Ajuste Gamma / Contraste (IA)",
+    0.5, 2.0, float(calib_data.get('wfa_gamma', 1.0)), step=0.1,
+    help="Valores < 1.0 aumentan la visibilidad de PNNs tenues; valores > 1.0 suprimen el fondo difuso durante la inferencia de la IA."
+)
+
 px_size = float(calib_data.get('pixel_size_um', 1.0))
 
 st.sidebar.markdown("---")
@@ -161,7 +186,9 @@ if run_btn:
         'lupori_min_peak_dist': min_peak_dist,
         'lupori_tile_size': tile_size,
         'lupori_tile_overlap': tile_overlap,
-        'soma_erosion_um': soma_erosion_um
+        'soma_erosion_um': soma_erosion_um,
+        'wfa_norm_method': wfa_norm_method,
+        'wfa_gamma': wfa_gamma
     })
     with open(CONFIG_PATH, 'w') as f:
         json.dump(calib_data, f, indent=4)
@@ -205,10 +232,18 @@ v_tab1, v_tab2, v_tab3 = st.tabs([
 heatmap_path = os.path.join(SEGM_DIR, f"{base_fn}_power_heatmap.png")
 
 with v_tab1:
+    show_norm_prev = st.checkbox("🔍 Previsualizar Canal WFA Normalizado (como lo ve la IA)", value=False, key="wfa_show_norm_prev")
     col_prev1, col_prev2 = st.columns(2)
     with col_prev1:
-        st.markdown('<p class="img-caption">Canal WFA Original</p>', unsafe_allow_html=True)
-        st.image(wfa_disp, width="stretch", clamp=True, channels="GRAY")
+        if show_norm_prev:
+            w_norm_arr, _ = normalize_wfa_for_detection(wfa_raw, method=wfa_norm_method, gamma=wfa_gamma)
+            w_disp_shown = (w_norm_arr * 255.0).astype(np.uint8)
+            st.markdown(f'<p class="img-caption">Canal WFA Normalizado ({wfa_norm_method}, γ={wfa_gamma})</p>', unsafe_allow_html=True)
+        else:
+            w_disp_shown = wfa_disp
+            st.markdown('<p class="img-caption">Canal WFA Original (Raw)</p>', unsafe_allow_html=True)
+            
+        st.image(w_disp_shown, width="stretch", clamp=True, channels="GRAY")
 
     with col_prev2:
         st.markdown('<p class="img-caption">Redes PNN Detectadas (IA)</p>', unsafe_allow_html=True)

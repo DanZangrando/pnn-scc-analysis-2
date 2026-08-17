@@ -47,5 +47,7 @@
     "tile_width": 750,
     "tile_mosaic_size": 110,
     "soma_erosion_um": 2.0,
-    "lupori_min_peak_dist": 10
+    "lupori_min_peak_dist": 10,
+    "wfa_norm_method": "Percentil Robusto (1-99.5%)",
+    "wfa_gamma": 1.0
 }

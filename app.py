@@ -131,6 +131,18 @@ with st.sidebar.expander("🧠 Parámetros PNNloc / PNNscore"):
     tile_size = st.select_slider("Tamaño tile (px)", options=[256, 512, 640, 1024, 2048], value=int(calib_data.get('lupori_tile_size', 640)))
     tile_overlap = st.slider("Overlap tiles (px)", 16, 128, int(calib_data.get('lupori_tile_overlap', 64)), step=16)
 
+    wfa_norm_options = [
+        "Percentil Robusto (1-99.5%)",
+        "CLAHE (Adaptativo Local)",
+        "Percentil Agresivo (0.5-99.8%)",
+        "Min-Max Estándar (0-1)",
+        "Ninguno (Raw)"
+    ]
+    default_wfa_norm = calib_data.get('wfa_norm_method', "Percentil Robusto (1-99.5%)")
+    idx_wfa_norm = wfa_norm_options.index(default_wfa_norm) if default_wfa_norm in wfa_norm_options else 0
+    wfa_norm_method = st.selectbox("Normalización WFA (IA)", wfa_norm_options, index=idx_wfa_norm, help="Normaliza el canal WFA durante la detección de la IA para rescatar PNNs tenues sin alterar los valores de la imagen original.")
+    wfa_gamma = st.slider("Contraste Gamma (IA)", 0.5, 2.0, float(calib_data.get('wfa_gamma', 1.0)), step=0.1)
+
 if st.sidebar.button("💾 Guardar Configuración Global"):
     calib_data.update({
         'pixel_size_um': px_size,
@@ -145,6 +157,8 @@ if st.sidebar.button("💾 Guardar Configuración Global"):
         'lupori_min_peak_dist': min_peak_dist,
         'lupori_tile_size': tile_size,
         'lupori_tile_overlap': tile_overlap,
+        'wfa_norm_method': wfa_norm_method,
+        'wfa_gamma': wfa_gamma,
         'channels': ["AGR", "DAPI", "WFA", "PV"]
     })
     save_config(calib_data)

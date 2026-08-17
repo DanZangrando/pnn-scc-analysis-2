@@ -21,6 +21,47 @@ from datasets.patched_datasets import PatchedMultiImageDataset
 from methods.detection.train_fn import predict_points
 from methods.detection.transforms import ToTensor
 
+def normalize_wfa_for_detection(w_raw, method="Percentil Robusto (1-99.5%)", clip_min_p=1.0, clip_max_p=99.5, gamma=1.0):
+    w_f = w_raw.astype(np.float32)
+    
+    if "Percentil Robusto" in method:
+        p_low = float(np.percentile(w_f, clip_min_p))
+        p_high = float(np.percentile(w_f, clip_max_p))
+        if p_high > p_low:
+            w_norm = np.clip((w_f - p_low) / (p_high - p_low), 0.0, 1.0)
+        else:
+            w_norm = (w_f - w_f.min()) / (w_f.max() - w_f.min() + 1e-8)
+            
+    elif "Percentil Agresivo" in method:
+        p_low = float(np.percentile(w_f, 0.5))
+        p_high = float(np.percentile(w_f, 99.8))
+        if p_high > p_low:
+            w_norm = np.clip((w_f - p_low) / (p_high - p_low), 0.0, 1.0)
+        else:
+            w_norm = (w_f - w_f.min()) / (w_f.max() - w_f.min() + 1e-8)
+            
+    elif "CLAHE" in method:
+        w_minmax = (w_f - w_f.min()) / (w_f.max() - w_f.min() + 1e-8)
+        w_norm = exposure.equalize_adapthist(w_minmax, clip_limit=0.02).astype(np.float32)
+        
+    elif "Min-Max" in method:
+        w_norm = (w_f - w_f.min()) / (w_f.max() - w_f.min() + 1e-8)
+        
+    elif "Z-Score" in method:
+        mu = float(np.mean(w_f))
+        std = float(np.std(w_f)) + 1e-8
+        z = (w_f - mu) / std
+        w_norm = np.clip((z + 2.0) / 6.0, 0.0, 1.0)
+        
+    else: # "Ninguno"
+        w_norm = (w_f - w_f.min()) / (w_f.max() - w_f.min() + 1e-8)
+
+    if gamma != 1.0 and gamma > 0:
+        w_norm = np.power(w_norm, gamma)
+        
+    wfa_enhanced_u16 = (w_norm * 65535.0).astype(np.uint16)
+    return w_norm, wfa_enhanced_u16
+
 def extract_patch(args):
     wfa_norm, r, c, half_sz = args
     H, W = wfa_norm.shape
@@ -68,10 +109,13 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
     # 2. PNN Detection (PNNloc + PNNscore)
     pnn_radius_um = float(calib_data.get('pnn_radius_um', 20.0))
     scale_factor = (px_size / 0.325) * (20.0 / pnn_radius_um)
-    wfa_norm = (w_raw.astype(np.float32) - w_raw.min()) / (w_raw.max() - w_raw.min() + 1e-8)
+    
+    wfa_norm_method = calib_data.get('wfa_norm_method', 'Percentil Robusto (1-99.5%)')
+    wfa_gamma = float(calib_data.get('wfa_gamma', 1.0))
+    wfa_norm, wfa_enhanced_u16 = normalize_wfa_for_detection(w_raw, method=wfa_norm_method, gamma=wfa_gamma)
     
     wfa_single_path = tif_path.replace('.tif', '_wfa_temp.tif')
-    wfa_rgb = np.stack([w_raw, w_raw, w_raw], axis=0)
+    wfa_rgb = np.stack([wfa_enhanced_u16, wfa_enhanced_u16, wfa_enhanced_u16], axis=0)
     tiff.imwrite(wfa_single_path, wfa_rgb.astype(np.uint16), imagej=True)
 
     img_preds = []
