@@ -7,6 +7,9 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
 from scipy.stats import mannwhitneyu, wilcoxon, f_oneway, kruskal, levene
+import statsmodels.api as sm
+from statsmodels.formula.api import ols
+from statsmodels.stats.anova import anova_lm
 from statsmodels.stats.multicomp import pairwise_tukeyhsd
 
 import sys
@@ -319,7 +322,8 @@ filter_sec = st.sidebar.selectbox(
 stats_mode = st.sidebar.radio(
     "Modo de Análisis Estadístico:",
     [
-        "🔬 ANOVA de 1 Vía (Condiciones) + Post-Hoc",
+        "🏆 ANOVA Factorial de 3 Vías (Condición × Sexo × Hemisferio)",
+        "🔬 ANOVA de 1 Vía por Condición (Filtro de Cohorte)",
         "📊 Desglose Tradicional (Panel por Sexo)"
     ],
     index=0,
@@ -505,9 +509,122 @@ def run_stats_layout(df_base, var_options, selected_var_key, title_lbl):
     SECTION_COLORS = {'IPSI': '#00f2fe', 'CONTRA': '#ff7b00'}
 
     # ═════════════════════════════════════════════════════════════════════
+    # MODO 0: ANOVA FACTORIAL DE 3 VÍAS (CONDICIÓN × SEXO × HEMISFERIO)
+    # ═════════════════════════════════════════════════════════════════════
+    if "3 Vías" in stats_mode or "Factorial" in stats_mode:
+        df_3way = df_base.dropna(subset=[selected_var_key, 'condition', 'sex', 'section']).copy()
+        df_3way['condition'] = pd.Categorical(df_3way['condition'], categories=COND_ORDER, ordered=True)
+        
+        if len(df_3way) < 8 or df_3way['condition'].nunique() < 2:
+            st.warning("No hay suficientes datos celulares o de sujetos para ajustar el modelo ANOVA Factorial de 3 Vías.")
+            return
+            
+        formula = f"{selected_var_key} ~ C(condition, Sum) * C(sex, Sum) * C(section, Sum)"
+        
+        try:
+            model_3way = ols(formula, data=df_3way).fit()
+            aov_raw = anova_lm(model_3way, typ=3)
+            
+            ss_res = aov_raw.loc['Residual', 'sum_sq']
+            aov_raw['eta_p2'] = aov_raw['sum_sq'] / (aov_raw['sum_sq'] + ss_res)
+            
+            name_map = {
+                'Intercept': 'Intersección (Media Global)',
+                'C(condition, Sum)': 'Condición Temporal (NONE, 3d, 7d, 14d)',
+                'C(sex, Sum)': 'Sexo (MACHO vs HEMBRA)',
+                'C(section, Sum)': 'Hemisferio (IPSI vs CONTRA)',
+                'C(condition, Sum):C(sex, Sum)': 'Condición × Sexo',
+                'C(condition, Sum):C(section, Sum)': 'Condición × Hemisferio',
+                'C(sex, Sum):C(section, Sum)': 'Sexo × Hemisferio',
+                'C(condition, Sum):C(sex, Sum):C(section, Sum)': 'Condición × Sexo × Hemisferio (Triple)',
+                'Residual': 'Varianza Residual (Error)'
+            }
+            
+            aov_rows = []
+            for idx_name, r in aov_raw.iterrows():
+                if idx_name == 'Intercept':
+                    continue
+                clean_name = name_map.get(idx_name, idx_name)
+                ss_val = r['sum_sq']
+                df_val = int(r['df'])
+                ms_val = ss_val / df_val if df_val > 0 else 0.0
+                f_val = r['F']
+                p_val = r['PR(>F)']
+                eta_p2 = r.get('eta_p2', 0.0)
+                
+                if idx_name == 'Residual':
+                    aov_rows.append({
+                        "Fuente de Variación": clean_name,
+                        "Suma Cuadrados (SS)": f"{ss_val:.3f}",
+                        "Grados Libertad (df)": f"{df_val}",
+                        "Cuadrado Medio (MS)": f"{ms_val:.3f}",
+                        "F": "-",
+                        "p-valor": "-",
+                        "Significancia": "-",
+                        "Eta Parcial (ηp²)": "-",
+                        "Impacto": "-"
+                    })
+                else:
+                    impact = "Fuerte (Marcado)" if eta_p2 >= 0.14 else ("Moderado" if eta_p2 >= 0.06 else ("Pequeño" if eta_p2 >= 0.01 else "Despreciable"))
+                    aov_rows.append({
+                        "Fuente de Variación": clean_name,
+                        "Suma Cuadrados (SS)": f"{ss_val:.3f}",
+                        "Grados Libertad (df)": f"{df_val}",
+                        "Cuadrado Medio (MS)": f"{ms_val:.3f}",
+                        "F": f"{f_val:.3f}" if pd.notna(f_val) else "-",
+                        "p-valor": f"{p_val:.4e}" if pd.notna(p_val) else "-",
+                        "Significancia": sig_stars(p_val) if pd.notna(p_val) else "-",
+                        "Eta Parcial (ηp²)": f"{eta_p2:.4f}" if pd.notna(eta_p2) else "-",
+                        "Impacto": impact if pd.notna(eta_p2) else "-"
+                    })
+                    
+            st.markdown('<div class="table-caption">📋 Tabla ANOVA Factorial de Tres Vías (Tipo III - Sumas de Cuadrados Parciales)</div>', unsafe_allow_html=True)
+            st.dataframe(pd.DataFrame(aov_rows), use_container_width=True)
+            
+            # Key KPI highlights
+            c_a1, c_a2, c_a3 = st.columns(3)
+            r_cond = aov_raw.loc['C(condition, Sum)'] if 'C(condition, Sum)' in aov_raw.index else None
+            r_sec = aov_raw.loc['C(section, Sum)'] if 'C(section, Sum)' in aov_raw.index else None
+            r_inter = aov_raw.loc['C(condition, Sum):C(section, Sum)'] if 'C(condition, Sum):C(section, Sum)' in aov_raw.index else None
+            
+            if r_cond is not None and pd.notna(r_cond['F']):
+                c_a1.metric("⏱️ Efecto Condición", f"F = {r_cond['F']:.2f}", delta=f"p = {r_cond['PR(>F)']:.4e}", delta_color="normal" if r_cond['PR(>F)'] < 0.05 else "off")
+            if r_sec is not None and pd.notna(r_sec['F']):
+                c_a2.metric("🛡️ Efecto Hemisferio", f"F = {r_sec['F']:.2f}", delta=f"p = {r_sec['PR(>F)']:.4e}", delta_color="normal" if r_sec['PR(>F)'] < 0.05 else "off")
+            if r_inter is not None and pd.notna(r_inter['F']):
+                c_a3.metric("⚡ Interacción Condición × Hemisferio", f"F = {r_inter['F']:.2f}", delta=f"p = {r_inter['PR(>F)']:.4e}", delta_color="normal" if r_inter['PR(>F)'] < 0.05 else "off")
+                
+            # ─── INTERACTION PLOT (MEDIAS ESTIMADAS 3 VÍAS) ───
+            st.divider()
+            st.subheader("📈 Perfil de Interacción Factorial (Medias Estimadas Condición × Hemisferio × Sexo)")
+            
+            marginal_stats = df_3way.groupby(['condition', 'section', 'sex'])[selected_var_key].agg(['mean', 'std', 'count']).reset_index()
+            marginal_stats['sem'] = marginal_stats['std'] / np.sqrt(marginal_stats['count'])
+            
+            fig_3w = px.line(
+                marginal_stats,
+                x='condition',
+                y='mean',
+                color='section',
+                facet_col='sex',
+                error_y='sem',
+                markers=True,
+                color_discrete_map={'IPSI': '#00f2fe', 'CONTRA': '#ff7b00'},
+                title=f"Perfil de Interacción 3 Vías: {var_options[selected_var_key]} (Media ± SEM)",
+                labels={'condition': 'Condición', 'mean': var_options[selected_var_key], 'section': 'Hemisferio'},
+                template='plotly_dark'
+            )
+            fig_3w.update_traces(line=dict(width=2.5), marker=dict(size=8))
+            fig_3w.update_layout(height=480)
+            st.plotly_chart(fig_3w, use_container_width=True)
+            
+        except Exception as e_aov:
+            st.error(f"No se pudo ajustar el modelo ANOVA de 3 Vías: {e_aov}")
+
+    # ═════════════════════════════════════════════════════════════════════
     # MODO 1: ANOVA DE 1 VÍA POR CONDICIÓN EXPERIMENTAL (FILTRABLE EN SIDEBAR)
     # ═════════════════════════════════════════════════════════════════════
-    if stats_mode == "🔬 ANOVA de 1 Vía (Condiciones) + Post-Hoc":
+    elif "1 Vía" in stats_mode:
         df_filtered = df_base.copy()
         if filter_sex == "Solo MACHO":
             df_filtered = df_filtered[df_filtered['sex'] == 'MACHO']
