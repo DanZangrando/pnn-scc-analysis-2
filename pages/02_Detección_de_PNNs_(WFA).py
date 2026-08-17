@@ -22,12 +22,36 @@ src_path = os.path.abspath("src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
+import importlib
 from image_io import load_channels_tif, get_or_create_mip
 from ai_models import load_models
-import importlib
 import pipeline_runner
-importlib.reload(pipeline_runner)
-from pipeline_runner import run_pipeline_on_file, normalize_wfa_for_detection
+try:
+    importlib.reload(pipeline_runner)
+except Exception:
+    pass
+
+run_pipeline_on_file = pipeline_runner.run_pipeline_on_file
+normalize_wfa_for_detection = getattr(pipeline_runner, 'normalize_wfa_for_detection', None)
+
+if normalize_wfa_for_detection is None:
+    def normalize_wfa_for_detection(w_raw, method="Ninguno (Raw)", gamma=1.0):
+        w_f = w_raw.astype(np.float32)
+        if "Percentil Robusto" in method:
+            p_low, p_high = float(np.percentile(w_f, 1.0)), float(np.percentile(w_f, 99.5))
+            w_norm = np.clip((w_f - p_low) / (p_high - p_low + 1e-8), 0.0, 1.0)
+        elif "Percentil Agresivo" in method:
+            p_low, p_high = float(np.percentile(w_f, 0.5)), float(np.percentile(w_f, 99.8))
+            w_norm = np.clip((w_f - p_low) / (p_high - p_low + 1e-8), 0.0, 1.0)
+        elif "CLAHE" in method:
+            w_minmax = (w_f - w_f.min()) / (w_f.max() - w_f.min() + 1e-8)
+            w_norm = exposure.equalize_adapthist(w_minmax, clip_limit=0.02).astype(np.float32)
+        else:
+            w_norm = (w_f - w_f.min()) / (w_f.max() - w_f.min() + 1e-8)
+        if gamma != 1.0 and gamma > 0:
+            w_norm = np.power(w_norm, gamma)
+        return w_norm
+
 from omegaconf import OmegaConf
 
 st.set_page_config(page_title="Paso 3: Detección de PNNs (WFA)", layout="wide")
@@ -138,36 +162,63 @@ pnn_radius_um = st.sidebar.number_input(
     min_value=1.0, max_value=100.0, step=1.0,
     help="Radio físico de la red perineuronal en micras. Ajusta la escala de los parches para PNNloc (Faster R-CNN) y PNNscore (ConvNet) y el tamaño de los anillos pericelulares."
 )
-loc_threshold = st.sidebar.slider("Umbral de Probabilidad (PNNloc)", 0.05, 0.90, float(calib_data.get('lupori_loc_threshold', 0.20)), step=0.05)
-score_threshold = st.sidebar.slider("Umbral de Calificación (PNNscore)", 0.05, 1.0, float(calib_data.get('lupori_score_threshold', 0.30)), step=0.05)
+loc_threshold = st.sidebar.slider(
+    "Umbral de Probabilidad (PNNloc)", 
+    0.01, 0.90, 
+    float(calib_data.get('lupori_loc_threshold', 0.05)), 
+    step=0.01,
+    help="Umbral de detección de Faster R-CNN. Valores más bajos detectan más candidatos de PNNs."
+)
+
+accept_all_pnnloc = st.sidebar.checkbox(
+    "⚡ Aceptar todas las detecciones de PNNloc (Omitir filtro PNNscore)",
+    value=bool(calib_data.get('accept_all_pnnloc', False)),
+    help="Si se activa, se aceptan todas las redes encontradas por Faster R-CNN sin descartar ninguna por puntaje de ConvNet."
+)
+
+if accept_all_pnnloc:
+    score_threshold = -999.0
+    st.sidebar.info("💡 Modo 'Aceptar Todo' activado: no se filtrará ninguna red por puntaje.")
+else:
+    default_score_val = float(calib_data.get('lupori_score_threshold', -1.0))
+    if default_score_val < -3.0 or default_score_val > 3.0:
+        default_score_val = -1.0
+    score_threshold = st.sidebar.slider(
+        "Umbral de Calificación (PNNscore)", 
+        -3.0, 3.0, 
+        default_score_val, 
+        step=0.05,
+        help="El modelo ConvNet genera puntuaciones continuas (logits). Valores negativos como -0.8 o -1.0 permiten aceptar PNNs con tinción más tenue o heterogénea."
+    )
+
 min_peak_dist = st.sidebar.slider("Distancia mínima entre PNNs (px)", 10, 80, int(calib_data.get('lupori_min_peak_dist', 30)), step=5)
 tile_size = st.sidebar.select_slider("Tamaño de tile (px)", options=[256, 512, 640, 1024, 2048], value=int(calib_data.get('lupori_tile_size', 640)))
 tile_overlap = st.sidebar.slider("Overlap entre tiles (px)", 16, 128, int(calib_data.get('lupori_tile_overlap', 32)), step=16)
 soma_erosion_um = st.sidebar.slider("Erosión de Soma (µm)", 0.0, 4.0, float(calib_data.get('soma_erosion_um', 1.5)), step=0.1)
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("🌟 Normalización de Intensidad WFA (IA)")
+st.sidebar.subheader("🌟 Realce / Normalización WFA (IA)")
 wfa_norm_options = [
+    "Ninguno (Raw)",
     "Percentil Robusto (1-99.5%)",
     "CLAHE (Adaptativo Local)",
     "Percentil Agresivo (0.5-99.8%)",
-    "Min-Max Estándar (0-1)",
-    "Ninguno (Raw)"
+    "Min-Max Estándar (0-1)"
 ]
-default_wfa_norm = calib_data.get('wfa_norm_method', "Percentil Robusto (1-99.5%)")
+default_wfa_norm = calib_data.get('wfa_norm_method', "Ninguno (Raw)")
 idx_wfa_norm = wfa_norm_options.index(default_wfa_norm) if default_wfa_norm in wfa_norm_options else 0
 
 wfa_norm_method = st.sidebar.selectbox(
     "Preprocesamiento WFA (Inferencia IA):",
     wfa_norm_options,
     index=idx_wfa_norm,
-    help="Aplica normalización y estiramiento de contraste dinámico al canal WFA exclusivamente durante la detección de PNNs para detectar redes de baja intensidad. Las intensidades biológicas originales no se alteran."
+    help="Aplica normalización o estiramiento de contraste al canal WFA exclusivamente durante la inferencia de la IA. Las intensidades biológicas de la imagen original se conservan intactas."
 )
 
 wfa_gamma = st.sidebar.slider(
     "Ajuste Gamma / Contraste (IA)",
     0.5, 2.0, float(calib_data.get('wfa_gamma', 1.0)), step=0.1,
-    help="Valores < 1.0 aumentan la visibilidad de PNNs tenues; valores > 1.0 suprimen el fondo difuso durante la inferencia de la IA."
+    help="Valores < 1.0 aumentan la visibilidad de PNNs tenues; valores > 1.0 suprimen el fondo difuso."
 )
 
 px_size = float(calib_data.get('pixel_size_um', 1.0))
@@ -235,13 +286,13 @@ v_tab1, v_tab2, v_tab3 = st.tabs([
 heatmap_path = os.path.join(SEGM_DIR, f"{base_fn}_power_heatmap.png")
 
 with v_tab1:
-    show_norm_prev = st.checkbox("🔍 Previsualizar Canal WFA Normalizado (como lo ve la IA)", value=False, key="wfa_show_norm_prev")
+    show_norm_prev = st.checkbox("🔍 Previsualizar Canal WFA con Ajuste (como lo ve la IA)", value=False, key="wfa_show_norm_prev")
     col_prev1, col_prev2 = st.columns(2)
     with col_prev1:
         if show_norm_prev:
-            w_norm_arr, _ = normalize_wfa_for_detection(wfa_raw, method=wfa_norm_method, gamma=wfa_gamma)
+            w_norm_arr = normalize_wfa_for_detection(wfa_raw, method=wfa_norm_method, gamma=wfa_gamma)
             w_disp_shown = (w_norm_arr * 255.0).astype(np.uint8)
-            st.markdown(f'<p class="img-caption">Canal WFA Normalizado ({wfa_norm_method}, γ={wfa_gamma})</p>', unsafe_allow_html=True)
+            st.markdown(f'<p class="img-caption">Canal WFA Preprocesado ({wfa_norm_method}, γ={wfa_gamma})</p>', unsafe_allow_html=True)
         else:
             w_disp_shown = wfa_disp
             st.markdown('<p class="img-caption">Canal WFA Original (Raw)</p>', unsafe_allow_html=True)
@@ -256,9 +307,14 @@ with v_tab1:
                 loaded_masks = tiff.imread(seg_file)
                 num_ch = loaded_masks.shape[0] if len(loaded_masks.shape) == 3 else 1
                 m_pnn_mask = loaded_masks[2, :, :] if num_ch >= 3 else np.zeros_like(wfa_raw)
-                if np.max(m_pnn_mask) > 0:
+                n_detected_pnn = int(np.max(m_pnn_mask))
+                if n_detected_pnn > 0:
                     overlay = label2rgb(m_pnn_mask, image=wfa_disp, bg_label=0, alpha=0.4, image_alpha=1.0)
                     st.image(overlay, width="stretch", clamp=True)
+                    st.caption(f"🎯 **{n_detected_pnn}** redes PNN detectadas por la IA en esta imagen.")
+                    has_pnn_mask = True
+                else:
+                    st.warning("⚠️ La IA procesó la imagen pero no detectó ninguna PNN con los umbrales actuales.")
                     has_pnn_mask = True
             except Exception as e:
                 st.error(f"Error al cargar máscara segmentada: {e}")
@@ -305,72 +361,93 @@ with v_tab3:
 
 
 # Inspector de Candidatos
-if os.path.exists(candidates_file):
+cands_data = []
+if os.path.exists(candidates_file) and os.path.getsize(candidates_file) > 2:
     try:
         with open(candidates_file, 'r') as f:
             cands_data = json.load(f)
+    except Exception:
+        cands_data = []
+
+if not cands_data and os.path.exists(csv_file):
+    try:
+        df_c = pd.read_csv(csv_file)
+        if not df_c.empty and 'centroid_y' in df_c.columns:
+            for idx_r, row in df_c[df_c['is_pnn_plus'] == True].iterrows():
+                cands_data.append({
+                    'id': int(row.get('label', idx_r + 1)),
+                    'centroid_y': float(row['centroid_y']),
+                    'centroid_x': float(row['centroid_x']),
+                    'score': float(row.get('score', 1.0)),
+                    'is_confirmed': True
+                })
+    except Exception:
+        pass
+
+if len(cands_data) > 0:
+    try:
+        st.divider()
+        st.subheader("🔍 Inspector de Candidatos (PNNscore)")
+        st.write("Selecciona una PNN candidata de la lista para ver su parche evaluado:")
+        
+        c_sel, c_score = st.columns([2, 1])
+        with c_sel:
+            cand_map = {c["id"]: c for c in cands_data}
+            cand_ids = list(cand_map.keys())
+            selected_cand_id = st.selectbox(
+                "Seleccionar Candidato por ID:",
+                cand_ids,
+                index=0,
+                format_func=lambda cid: f"ID: {cid} (Y: {cand_map[cid]['centroid_y']:.0f}, X: {cand_map[cid]['centroid_x']:.0f}) - Score: {cand_map[cid].get('score', 0.0):.4f}"
+            )
+        
+        selected_cand = cand_map[selected_cand_id]
+        cy, cx = selected_cand["centroid_y"], selected_cand["centroid_x"]
+        score = selected_cand.get("score", 0.0)
+        prob_calib = 1.0 / (1.0 + np.exp(-score)) * 100.0
+        is_confirmed = score >= score_threshold
+        
+        with c_score:
+            st.metric(
+                "Confianza PNNscore (IA)", 
+                f"{score:.3f} ({prob_calib:.1f}%)", 
+                delta="Aceptado" if is_confirmed else "Descartado",
+                delta_color="normal" if is_confirmed else "inverse"
+            )
             
-        if len(cands_data) > 0:
-            st.divider()
-            st.subheader("🔍 Inspector de Candidatos (PNNscore)")
-            st.write("Selecciona una PNN candidata de la lista para ver su parche 64x64 evaluado:")
+        H, W = wfa_raw.shape
+        cy_int, cx_int = int(cy), int(cx)
+        scale_factor = px_size / 0.325
+        half_sz = max(16, int(round(64.0 / scale_factor)))
+        y0, y1 = max(0, cy_int - half_sz), min(H, cy_int + half_sz)
+        x0, x1 = max(0, cx_int - half_sz), min(W, cx_int + half_sz)
+        
+        patch_wfa = wfa_raw[y0:y1, x0:x1]
+        wfa_min, wfa_max = patch_wfa.min(), patch_wfa.max()
+        if wfa_max > wfa_min:
+            patch_wfa_8bit = ((patch_wfa - wfa_min) / (wfa_max - wfa_min) * 255.0).astype(np.uint8)
+        else:
+            patch_wfa_8bit = patch_wfa.astype(np.uint8)
             
-            c_sel, c_score = st.columns([2, 1])
-            with c_sel:
-                cand_ids = [c["id"] for c in cands_data]
-                selected_cand_id = st.selectbox(
-                    "Seleccionar Candidato por ID:",
-                    cand_ids,
-                    index=0,
-                    format_func=lambda cid: f"ID: {cid} (Y: {cands_data[cid-1]['centroid_y']:.0f}, X: {cands_data[cid-1]['centroid_x']:.0f}) - Score: {cands_data[cid-1].get('score', 0.0):.4f}"
-                )
-            
-            selected_cand = cands_data[selected_cand_id - 1]
-            cy, cx = selected_cand["centroid_y"], selected_cand["centroid_x"]
-            score = selected_cand.get("score", 0.0)
-            is_confirmed = score >= score_threshold
-            
-            with c_score:
-                st.metric(
-                    "Confianza PNNscore (IA)", 
-                    f"{score:.4f}", 
-                    delta="Aceptado" if is_confirmed else "Descartado",
-                    delta_color="normal" if is_confirmed else "inverse"
-                )
-                
-            H, W = wfa_raw.shape
-            cy_int, cx_int = int(cy), int(cx)
-            scale_factor = px_size / 0.325
-            half_sz = max(16, int(round(64.0 / scale_factor)))
-            y0, y1 = max(0, cy_int - half_sz), min(H, cy_int + half_sz)
-            x0, x1 = max(0, cx_int - half_sz), min(W, cx_int + half_sz)
-            
-            patch_wfa = wfa_raw[y0:y1, x0:x1]
-            wfa_min, wfa_max = patch_wfa.min(), patch_wfa.max()
-            if wfa_max > wfa_min:
-                patch_wfa_8bit = ((patch_wfa - wfa_min) / (wfa_max - wfa_min) * 255.0).astype(np.uint8)
-            else:
-                patch_wfa_8bit = patch_wfa.astype(np.uint8)
-                
-            wfa_rgb = cv2.cvtColor(patch_wfa_8bit, cv2.COLOR_GRAY2RGB)
-            ctr_y = cy_int - y0
-            ctr_x = cx_int - x0
-            
-            # Draw box
-            box_half = max(3, int(round(12.0 / scale_factor)))
-            box_color = (0, 255, 0) if is_confirmed else (255, 0, 0)
-            cv2.rectangle(wfa_rgb, (ctr_x - box_half, ctr_y - box_half), (ctr_x + box_half, ctr_y + box_half), box_color, 1)
-            cv2.circle(wfa_rgb, (ctr_x, ctr_y), 2, (0, 255, 255), -1)
-            
-            col_img, col_info = st.columns([1, 1])
-            with col_img:
-                st.image(wfa_rgb, caption="Cuadro verde/rojo indica clasificación PNNscore en WFA.", width="stretch")
-            with col_info:
-                st.markdown(f"""
-                * **ID Candidato:** {selected_cand_id}
-                * **Centroide (Y, X):** `({cy:.1f}, {cx:.1f})` px
-                * **Estado:** {"✅ Aprobado (PNN+)" if is_confirmed else "❌ Descartado"}
-                """)
+        wfa_rgb = cv2.cvtColor(patch_wfa_8bit, cv2.COLOR_GRAY2RGB)
+        ctr_y = cy_int - y0
+        ctr_x = cx_int - x0
+        
+        # Draw box
+        box_half = max(3, int(round(12.0 / scale_factor)))
+        box_color = (0, 255, 0) if is_confirmed else (255, 0, 0)
+        cv2.rectangle(wfa_rgb, (ctr_x - box_half, ctr_y - box_half), (ctr_x + box_half, ctr_y + box_half), box_color, 1)
+        cv2.circle(wfa_rgb, (ctr_x, ctr_y), 2, (0, 255, 255), -1)
+        
+        col_img, col_info = st.columns([1, 1])
+        with col_img:
+            st.image(wfa_rgb, caption="Cuadro verde/rojo indica clasificación PNNscore en WFA.", width="stretch")
+        with col_info:
+            st.markdown(f"""
+            * **ID Candidato:** {selected_cand_id}
+            * **Centroide (Y, X):** `({cy:.1f}, {cx:.1f})` px
+            * **Estado:** {"✅ Aprobado (PNN+)" if is_confirmed else "❌ Descartado"}
+            """)
     except Exception as e:
         st.warning(f"Error en el inspector de candidatos: {e}")
 

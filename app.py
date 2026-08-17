@@ -125,23 +125,26 @@ with st.sidebar.expander("🧠 Parámetros PNNloc / PNNscore"):
     if default_pnn_rad < 1.0:
         default_pnn_rad = 20.0
     pnn_radius_um = st.number_input("Radio Esperado PNN (µm)", value=default_pnn_rad, min_value=1.0, max_value=100.0, step=1.0, help="Radio físico de la red perineuronal en micras. Ajusta el escalado de parches para PNNloc y PNNscore.")
-    loc_threshold = st.slider("Umbral Prob (PNNloc)", 0.05, 0.90, float(calib_data.get('lupori_loc_threshold', 0.15)), step=0.05)
-    score_threshold = st.slider("Umbral Score (PNNscore)", 0.05, 1.0, float(calib_data.get('lupori_score_threshold', 0.50)), step=0.05)
+    loc_threshold = st.slider("Umbral Prob (PNNloc)", 0.01, 0.90, float(calib_data.get('lupori_loc_threshold', 0.05)), step=0.01)
+    default_score_val = float(calib_data.get('lupori_score_threshold', -1.0))
+    if default_score_val < -3.0 or default_score_val > 3.0:
+        default_score_val = -1.0
+    score_threshold = st.slider("Umbral Score (PNNscore)", -3.0, 3.0, default_score_val, step=0.05, help="Puntuación continua (logit) del modelo ConvNet. Valores entre -1.5 y 0.0 rescatan PNNs tenues.")
     min_peak_dist = st.slider("Distancia mín PNNs (px)", 10, 80, int(calib_data.get('lupori_min_peak_dist', 60)), step=5)
     tile_size = st.select_slider("Tamaño tile (px)", options=[256, 512, 640, 1024, 2048], value=int(calib_data.get('lupori_tile_size', 640)))
     tile_overlap = st.slider("Overlap tiles (px)", 16, 128, int(calib_data.get('lupori_tile_overlap', 64)), step=16)
 
     wfa_norm_options = [
+        "Ninguno (Raw)",
         "Percentil Robusto (1-99.5%)",
         "CLAHE (Adaptativo Local)",
         "Percentil Agresivo (0.5-99.8%)",
-        "Min-Max Estándar (0-1)",
-        "Ninguno (Raw)"
+        "Min-Max Estándar (0-1)"
     ]
-    default_wfa_norm = calib_data.get('wfa_norm_method', "Percentil Robusto (1-99.5%)")
+    default_wfa_norm = calib_data.get('wfa_norm_method', "Ninguno (Raw)")
     idx_wfa_norm = wfa_norm_options.index(default_wfa_norm) if default_wfa_norm in wfa_norm_options else 0
-    wfa_norm_method = st.selectbox("Normalización WFA (IA)", wfa_norm_options, index=idx_wfa_norm, help="Normaliza el canal WFA durante la detección de la IA para rescatar PNNs tenues sin alterar los valores de la imagen original.")
-    wfa_gamma = st.slider("Contraste Gamma (IA)", 0.5, 2.0, float(calib_data.get('wfa_gamma', 1.0)), step=0.1)
+    wfa_norm_method = st.selectbox("Realce / Normalización WFA (IA)", wfa_norm_options, index=idx_wfa_norm, help="Normaliza o realza el canal WFA durante la inferencia de la IA sin alterar los valores de la imagen original.")
+    wfa_gamma = st.slider("Ajuste Gamma (IA)", 0.5, 2.0, float(calib_data.get('wfa_gamma', 1.0)), step=0.1)
 
 if st.sidebar.button("💾 Guardar Configuración Global"):
     calib_data.update({

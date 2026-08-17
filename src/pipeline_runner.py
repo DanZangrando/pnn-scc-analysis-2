@@ -21,12 +21,12 @@ from datasets.patched_datasets import PatchedMultiImageDataset
 from methods.detection.train_fn import predict_points
 from methods.detection.transforms import ToTensor
 
-def normalize_wfa_for_detection(w_raw, method="Percentil Robusto (1-99.5%)", clip_min_p=1.0, clip_max_p=99.5, gamma=1.0):
+def normalize_wfa_for_detection(w_raw, method="Ninguno (Raw)", gamma=1.0):
     w_f = w_raw.astype(np.float32)
     
     if "Percentil Robusto" in method:
-        p_low = float(np.percentile(w_f, clip_min_p))
-        p_high = float(np.percentile(w_f, clip_max_p))
+        p_low = float(np.percentile(w_f, 1.0))
+        p_high = float(np.percentile(w_f, 99.5))
         if p_high > p_low:
             w_norm = np.clip((w_f - p_low) / (p_high - p_low), 0.0, 1.0)
         else:
@@ -47,20 +47,13 @@ def normalize_wfa_for_detection(w_raw, method="Percentil Robusto (1-99.5%)", cli
     elif "Min-Max" in method:
         w_norm = (w_f - w_f.min()) / (w_f.max() - w_f.min() + 1e-8)
         
-    elif "Z-Score" in method:
-        mu = float(np.mean(w_f))
-        std = float(np.std(w_f)) + 1e-8
-        z = (w_f - mu) / std
-        w_norm = np.clip((z + 2.0) / 6.0, 0.0, 1.0)
-        
-    else: # "Ninguno"
+    else: # "Ninguno (Raw)"
         w_norm = (w_f - w_f.min()) / (w_f.max() - w_f.min() + 1e-8)
 
     if gamma != 1.0 and gamma > 0:
         w_norm = np.power(w_norm, gamma)
         
-    wfa_enhanced_u16 = (w_norm * 65535.0).astype(np.uint16)
-    return w_norm, wfa_enhanced_u16
+    return w_norm
 
 def extract_patch(args):
     wfa_norm, r, c, half_sz = args
@@ -110,12 +103,18 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
     pnn_radius_um = float(calib_data.get('pnn_radius_um', 20.0))
     scale_factor = (px_size / 0.325) * (20.0 / pnn_radius_um)
     
-    wfa_norm_method = calib_data.get('wfa_norm_method', 'Percentil Robusto (1-99.5%)')
+    wfa_norm_method = calib_data.get('wfa_norm_method', 'Ninguno (Raw)')
     wfa_gamma = float(calib_data.get('wfa_gamma', 1.0))
-    wfa_norm, wfa_enhanced_u16 = normalize_wfa_for_detection(w_raw, method=wfa_norm_method, gamma=wfa_gamma)
+    wfa_norm = normalize_wfa_for_detection(w_raw, method=wfa_norm_method, gamma=wfa_gamma)
     
     wfa_single_path = tif_path.replace('.tif', '_wfa_temp.tif')
-    wfa_rgb = np.stack([wfa_enhanced_u16, wfa_enhanced_u16, wfa_enhanced_u16], axis=0)
+    if wfa_norm_method == "Ninguno (Raw)" and wfa_gamma == 1.0:
+        wfa_rgb = np.stack([w_raw, w_raw, w_raw], axis=0)
+    else:
+        max_v = float(w_raw.max()) if w_raw.max() > 0 else 65535.0
+        w_scaled = (wfa_norm * max_v).astype(np.uint16)
+        wfa_rgb = np.stack([w_scaled, w_scaled, w_scaled], axis=0)
+        
     tiff.imwrite(wfa_single_path, wfa_rgb.astype(np.uint16), imagej=True)
 
     img_preds = []
@@ -154,6 +153,7 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
 
     coords_loc = []
     scores_score = []
+    candidates_list = []
     
     if len(img_preds) > 0:
         half_sz = 32
@@ -168,11 +168,21 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
             patches_tensor = torch.tensor(np.array(patches), dtype=torch.float32).unsqueeze(1).to(device)
             with torch.no_grad():
                 score_outputs = model_score(patches_tensor).squeeze(-1).cpu().numpy()
+                if score_outputs.ndim == 0:
+                    score_outputs = np.array([float(score_outputs)])
             
-            for coord, sc in zip(valid_coords, score_outputs):
-                if sc >= score_threshold:
+            for idx_c, (coord, sc) in enumerate(zip(valid_coords, score_outputs), start=1):
+                sc_float = float(sc)
+                candidates_list.append({
+                    'id': idx_c,
+                    'centroid_y': float(coord[0]),
+                    'centroid_x': float(coord[1]),
+                    'score': sc_float,
+                    'is_confirmed': bool(sc_float >= score_threshold)
+                })
+                if sc_float >= score_threshold:
                     coords_loc.append(coord)
-                    scores_score.append(float(sc))
+                    scores_score.append(sc_float)
 
     # 3. Morphometry & Ring Masks
     H, W = w_raw.shape
@@ -356,5 +366,9 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
     json_path = os.path.join(out_metrics_dir, f"{base_name}_summary.json")
     with open(json_path, 'w') as f:
         json.dump(summary, f, indent=2)
+
+    cand_path = os.path.join(out_metrics_dir, f"{base_name}_candidates.json")
+    with open(cand_path, 'w') as f:
+        json.dump(candidates_list, f, indent=2)
 
     return summary
