@@ -5,11 +5,14 @@ import json
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-from scipy.stats import mannwhitneyu, wilcoxon
+import plotly.express as px
+from scipy.stats import mannwhitneyu, wilcoxon, f_oneway, kruskal, levene
+from statsmodels.stats.multicomp import pairwise_tukeyhsd
 
 import sys
+import tifffile as tiff
 sys.path.append(os.path.abspath("src"))
-from roi import load_rois, get_roi_json_path, points_in_rois, get_point_region_assignment
+from roi import load_rois, get_roi_json_path, points_in_rois, get_point_region_assignment, create_roi_mask
 from image_io import extract_animal_id
 
 st.set_page_config(page_title="Comparación Estadística", layout="wide")
@@ -297,6 +300,32 @@ use_bonferroni = st.sidebar.checkbox(
     value=True, key="stats_bonferroni"
 )
 
+st.sidebar.markdown("---")
+st.sidebar.subheader("🎯 Filtros de Cohorte (Subpoblación)")
+filter_sex = st.sidebar.selectbox(
+    "Filtro de Sexo:",
+    ["Ambos (MACHO y HEMBRA)", "Solo MACHO", "Solo HEMBRA"],
+    index=0,
+    key="stats_filter_sex"
+)
+
+filter_sec = st.sidebar.selectbox(
+    "Filtro de Hemisferio:",
+    ["Ambos (IPSI y CONTRA)", "Solo IPSI", "Solo CONTRA"],
+    index=0,
+    key="stats_filter_sec"
+)
+
+stats_mode = st.sidebar.radio(
+    "Modo de Análisis Estadístico:",
+    [
+        "🔬 ANOVA de 1 Vía (Condiciones) + Post-Hoc",
+        "📊 Desglose Tradicional (Panel por Sexo)"
+    ],
+    index=0,
+    key="stats_mode_select"
+)
+
 # ─── ROI COVERAGE & DATA FILTERING ───
 if area_scope == "🎯 Todas las ROIs (A, B y C combinadas)":
     valid_images_df = df_all_images[df_all_images['has_roi_any'] == True].copy()
@@ -448,7 +477,7 @@ def run_stats_layout(df_base, var_options, selected_var_key, title_lbl):
     df_base = df_base[df_base['sex'].notna() & df_base['condition'].notna() & df_base['section'].isin(['IPSI', 'CONTRA'])]
 
     if df_base.empty:
-        st.warning("No hay grupos con metadatos válidos de sexo (MACHO/HEMBRA) y condición (NONE/3 DÍAS/14 DÍAS).")
+        st.warning("No hay grupos con metadatos válidos de sexo (MACHO/HEMBRA) y condición (NONE/3 DÍAS/7 DÍAS/14 DÍAS).")
         return
 
     st.subheader(f"📈 {var_options[selected_var_key]} — {title_lbl}")
@@ -473,202 +502,443 @@ def run_stats_layout(df_base, var_options, selected_var_key, title_lbl):
         </div>
         """, unsafe_allow_html=True)
 
-    sexes_in_data = [s for s in ['MACHO', 'HEMBRA'] if s in df_base['sex'].unique()]
-    if not sexes_in_data:
-        sexes_in_data = df_base['sex'].dropna().unique().tolist()
-        
-    sex_groups = [(s, df_base[df_base['sex'] == s]) for s in sexes_in_data]
-    cols = st.columns(len(sex_groups))
-
     SECTION_COLORS = {'IPSI': '#00f2fe', 'CONTRA': '#ff7b00'}
 
-    for col_idx, (group_title, df_sub) in enumerate(sex_groups):
-        if df_sub.empty:
-            continue
+    # ═════════════════════════════════════════════════════════════════════
+    # MODO 1: ANOVA DE 1 VÍA POR CONDICIÓN EXPERIMENTAL (FILTRABLE EN SIDEBAR)
+    # ═════════════════════════════════════════════════════════════════════
+    if stats_mode == "🔬 ANOVA de 1 Vía (Condiciones) + Post-Hoc":
+        df_filtered = df_base.copy()
+        if filter_sex == "Solo MACHO":
+            df_filtered = df_filtered[df_filtered['sex'] == 'MACHO']
+        elif filter_sex == "Solo HEMBRA":
+            df_filtered = df_filtered[df_filtered['sex'] == 'HEMBRA']
 
-        df_sub = df_sub.copy()
-        df_sub['condition'] = pd.Categorical(df_sub['condition'], categories=COND_ORDER, ordered=True)
-        df_plot = df_sub.sort_values('condition')
+        if filter_sec == "Solo IPSI":
+            df_filtered = df_filtered[df_filtered['section'] == 'IPSI']
+        elif filter_sec == "Solo CONTRA":
+            df_filtered = df_filtered[df_filtered['section'] == 'CONTRA']
 
-        fig = go.Figure()
+        if df_filtered.empty or len(df_filtered) < 3:
+            st.warning(f"No hay suficientes datos tras aplicar los filtros de cohorte (Sexo: {filter_sex}, Hemisferio: {filter_sec}).")
+            return
 
-        present_conds = [c for c in COND_ORDER if c in df_plot['condition'].unique()]
-        present_secs  = [s for s in ['IPSI', 'CONTRA'] if s in df_plot['section'].unique()]
-        cond_idx_map  = {c: i for i, c in enumerate(present_conds)}
+        df_filtered['condition'] = pd.Categorical(df_filtered['condition'], categories=COND_ORDER, ordered=True)
+        df_filtered = df_filtered.sort_values('condition').dropna(subset=[selected_var_key])
 
-        for sec in present_secs:
-            df_sec = df_plot[df_plot['section'] == sec]
-            color = SECTION_COLORS.get(sec, '#ffffff')
-            fig.add_trace(go.Box(
-                x=df_sec['condition'],
-                y=df_sec[selected_var_key],
-                name=f"{sec}",
+        present_conds = [c for c in COND_ORDER if c in df_filtered['condition'].unique()]
+        groups_data = {c: df_filtered[df_filtered['condition'] == c][selected_var_key].dropna().values for c in present_conds}
+        groups_data = {c: vals for c, vals in groups_data.items() if len(vals) > 0}
+
+        # ─── CÁLCULO DE ANOVA Y TAMAÑO DE EFECTO ───
+        f_stat, p_anova = np.nan, np.nan
+        eta_sq = np.nan
+        h_stat, p_kruskal = np.nan, np.nan
+        w_stat, p_levene = np.nan, np.nan
+
+        k_groups = len(groups_data)
+        n_total = sum(len(v) for v in groups_data.values())
+        df_between = k_groups - 1
+        df_within = n_total - k_groups
+
+        if k_groups >= 2 and n_total >= k_groups + 1:
+            try:
+                f_stat, p_anova = f_oneway(*groups_data.values())
+                all_v = np.concatenate(list(groups_data.values()))
+                g_mean = np.mean(all_v)
+                ss_tot = np.sum((all_v - g_mean) ** 2)
+                ss_btw = sum(len(v) * (np.mean(v) - g_mean) ** 2 for v in groups_data.values())
+                eta_sq = float(ss_btw / (ss_tot + 1e-8))
+            except Exception:
+                pass
+
+            try:
+                h_stat, p_kruskal = kruskal(*groups_data.values())
+            except Exception:
+                pass
+
+            try:
+                w_stat, p_levene = levene(*groups_data.values())
+            except Exception:
+                pass
+
+        # ─── KPI METRIC CARDS ───
+        c_kpi1, c_kpi2, c_kpi3, c_kpi4 = st.columns(4)
+        c_kpi1.metric(
+            "🧪 ANOVA de 1 Vía (F)",
+            f"F({df_between}, {df_within}) = {f_stat:.2f}" if not np.isnan(f_stat) else "N/A",
+            delta=f"p = {p_anova:.4e}" if not np.isnan(p_anova) else "N/A",
+            delta_color="normal" if (not np.isnan(p_anova) and p_anova < 0.05) else "off"
+        )
+        
+        eta_desc = "Fuerte" if eta_sq >= 0.14 else ("Moderado" if eta_sq >= 0.06 else "Pequeño")
+        c_kpi2.metric(
+            "📐 Tamaño del Efecto (η²)",
+            f"η² = {eta_sq:.4f}" if not np.isnan(eta_sq) else "N/A",
+            f"Efecto {eta_desc}" if not np.isnan(eta_sq) else ""
+        )
+
+        c_kpi3.metric(
+            "📊 Kruskal-Wallis (H)",
+            f"H = {h_stat:.2f}" if not np.isnan(h_stat) else "N/A",
+            delta=f"p = {p_kruskal:.4e}" if not np.isnan(p_kruskal) else "N/A",
+            delta_color="normal" if (not np.isnan(p_kruskal) and p_kruskal < 0.05) else "off"
+        )
+
+        levene_ok = (not np.isnan(p_levene) and p_levene > 0.05)
+        c_kpi4.metric(
+            "⚖️ Homocedasticidad (Levene)",
+            f"W = {w_stat:.2f}" if not np.isnan(w_stat) else "N/A",
+            "Varianzas Homogéneas" if levene_ok else ("Varianzas Heterogéneas" if not np.isnan(p_levene) else "N/A")
+        )
+
+        st.caption(f"🎯 **Cohorte Activa:** Sexo: `{filter_sex}` | Hemisferio: `{filter_sec}` | $N_{{\\text{{total}}}} = {n_total}$ | $N_{{\\text{{sujetos}}}} = {df_filtered['animal_id'].nunique()}$")
+
+        # ─── GRÁFICO ANOVA (BOXPLOT + VIOLIN + JITTER + LÍNEA DE MEDIAS) ───
+        fig_anova = go.Figure()
+        cond_idx_map = {c: i for i, c in enumerate(present_conds)}
+        mean_points_x = []
+        mean_points_y = []
+
+        for cond in present_conds:
+            df_c = df_filtered[df_filtered['condition'] == cond]
+            vals = df_c[selected_var_key].dropna().values
+            color = COND_COLORS.get(cond, '#00f2fe')
+
+            fig_anova.add_trace(go.Box(
+                x=[cond] * len(vals),
+                y=vals,
+                name=cond,
                 marker_color=color,
-                boxmean='sd',
+                boxmean=True,
                 boxpoints='all',
                 jitter=0.35,
                 pointpos=0,
-                marker=dict(size=6, opacity=0.8, color=color),
-                line=dict(color=color, width=2),
-                text=df_sec['animal_id'] if 'animal_id' in df_sec.columns else None
+                marker=dict(size=6.5, opacity=0.8, color=color),
+                line=dict(color=color, width=2.2),
+                text=df_c['animal_id'] if 'animal_id' in df_c.columns else None
             ))
 
-        # ─── COMPUTE Y BOUNDS FOR ANNOTATIONS ───
-        all_y = df_sub[selected_var_key].dropna().values
+            if len(vals) > 0:
+                mean_points_x.append(cond)
+                mean_points_y.append(np.mean(vals))
+
+        # Add connecting mean line
+        if len(mean_points_x) >= 2:
+            fig_anova.add_trace(go.Scatter(
+                x=mean_points_x,
+                y=mean_points_y,
+                mode='lines+markers',
+                name='Media Temporal',
+                line=dict(color='#ffffff', width=2, dash='dot'),
+                marker=dict(size=8, symbol='diamond', color='#ffffff')
+            ))
+
+        # ─── OVERHEAD POST-HOC COMPARISON BARS ───
+        all_y = df_filtered[selected_var_key].dropna().values
         min_y = float(np.min(all_y)) if len(all_y) > 0 else 0.0
         max_y = float(np.max(all_y)) if len(all_y) > 0 else 1.0
         y_span = max_y - min_y if max_y != min_y else (max_y * 0.2 if max_y != 0 else 1.0)
-        
         step_h = y_span * 0.08
         current_y_offset = max_y + step_h
 
-        # Data structures to build summary tables
-        table_intra = []
+        # Post-hoc Tukey HSD
+        tukey_table = []
+        try:
+            clean_df = df_filtered[[selected_var_key, 'condition']].dropna()
+            clean_df['condition'] = clean_df['condition'].astype(str)
+            if clean_df['condition'].nunique() >= 2 and len(clean_df) > clean_df['condition'].nunique():
+                thsd = pairwise_tukeyhsd(clean_df[selected_var_key], clean_df['condition'], alpha=0.05)
+                for row_t in thsd._results_table.data[1:]:
+                    g1, g2, meandiff, p_adj, lower, upper, reject = row_t
+                    stars = sig_stars(p_adj)
+                    tukey_table.append({
+                        "Comparación": f"{g1} vs {g2}",
+                        "Diferencia (Δ Media)": f"{meandiff:.4f}",
+                        "IC 95%": f"[{lower:.3f}, {upper:.3f}]",
+                        "p-valor (Tukey HSD)": f"{p_adj:.4e}",
+                        "Significancia": stars
+                    })
 
-        # 1. INTRA-GROUP COMPARISONS (IPSI vs CONTRA in each condition)
-        for cond in present_conds:
-            if cond not in cond_idx_map:
+                    # Draw significant overhead annotations
+                    if p_adj < 0.05 and g1 in cond_idx_map and g2 in cond_idx_map:
+                        xa = cond_idx_map[g1]
+                        xb = cond_idx_map[g2]
+                        bar_y = current_y_offset
+                        tick_h = y_span * 0.015
+
+                        fig_anova.add_shape(type='line', x0=xa, x1=xb, y0=bar_y, y1=bar_y, line=dict(color='#00ff88', width=1.8))
+                        fig_anova.add_shape(type='line', x0=xa, x1=xa, y0=bar_y - tick_h, y1=bar_y, line=dict(color='#00ff88', width=1.8))
+                        fig_anova.add_shape(type='line', x0=xb, x1=xb, y0=bar_y - tick_h, y1=bar_y, line=dict(color='#00ff88', width=1.8))
+                        fig_anova.add_annotation(
+                            x=(xa + xb)/2, y=bar_y + tick_h * 0.8,
+                            text=f"<b>{stars}</b>", showarrow=False,
+                            font=dict(size=12, color='#00ff88'),
+                            xref='x', yref='y'
+                        )
+                        current_y_offset += step_h * 1.2
+        except Exception:
+            pass
+
+        # Pairwise non-parametric comparisons (Mann-Whitney U / Bonferroni)
+        pw_nonparam = []
+        cond_keys = list(groups_data.keys())
+        pairs = [(cond_keys[i], cond_keys[j]) for i in range(len(cond_keys)) for j in range(i+1, len(cond_keys))]
+        for ca, cb in pairs:
+            stat, p_m = run_mwu(groups_data[ca], groups_data[cb])
+            p_m_adj = p_m * len(pairs) if use_bonferroni and not np.isnan(p_m) else p_m
+            stars_m = sig_stars(p_m_adj if use_bonferroni else p_m)
+            m_a, s_a = np.mean(groups_data[ca]), np.std(groups_data[ca])
+            m_b, s_b = np.mean(groups_data[cb]), np.std(groups_data[cb])
+            pw_nonparam.append({
+                "Comparación": f"{ca} vs {cb}",
+                f"{ca} (Media ± DE)": f"{m_a:.2f} ± {s_a:.2f} (N={len(groups_data[ca])})",
+                f"{cb} (Media ± DE)": f"{m_b:.2f} ± {s_b:.2f} (N={len(groups_data[cb])})",
+                "p-valor (Sin Ajustar)": f"{p_m:.4f}" if not np.isnan(p_m) else "N/A",
+                "p-valor (Bonferroni)" if use_bonferroni else "p-valor": f"{p_m_adj:.4f}" if not np.isnan(p_m_adj) else "N/A",
+                "Significancia": stars_m
+            })
+
+        fig_anova.update_layout(
+            title=dict(
+                text=f"<b>ANOVA de 1 Vía: {var_options[selected_var_key]} por Condición ({filter_sex}, {filter_sec})</b>",
+                font=dict(size=16, color='#bb86fc')
+            ),
+            yaxis_title=var_options[selected_var_key],
+            xaxis_title="Condición Experimental",
+            template='plotly_dark',
+            height=540,
+            showlegend=False,
+            yaxis=dict(range=[min_y - step_h * 0.5, current_y_offset + step_h * 0.5])
+        )
+
+        st.plotly_chart(fig_anova, use_container_width=True)
+
+        col_t1, col_t2 = st.columns(2)
+        with col_t1:
+            st.markdown('<div class="table-caption">⏱️ Comparaciones Post-Hoc (Tukey HSD)</div>', unsafe_allow_html=True)
+            if tukey_table:
+                st.dataframe(pd.DataFrame(tukey_table), use_container_width=True)
+            else:
+                st.info("No se requirieron o no se pudieron calcular comparaciones de Tukey HSD.")
+
+        with col_t2:
+            st.markdown('<div class="table-caption">🧪 Comparaciones Pareadas No Paramétricas (Mann-Whitney U)</div>', unsafe_allow_html=True)
+            if pw_nonparam:
+                st.dataframe(pd.DataFrame(pw_nonparam), use_container_width=True)
+
+        st.markdown('<div class="table-caption">📋 Estadísticos Descriptivos por Condición</div>', unsafe_allow_html=True)
+        desc_rows = []
+        for c in present_conds:
+            v = groups_data.get(c, [])
+            if len(v) > 0:
+                desc_rows.append({
+                    "Condición": c,
+                    "N Observaciones": len(v),
+                    "N Sujetos": df_filtered[df_filtered['condition'] == c]['animal_id'].nunique(),
+                    "Media": f"{np.mean(v):.4f}",
+                    "Desv. Estándar (DE)": f"{np.std(v):.4f}",
+                    "Mediana": f"{np.median(v):.4f}",
+                    "IQR (Q3 - Q1)": f"{np.percentile(v, 75) - np.percentile(v, 25):.4f}",
+                    "Mínimo": f"{np.min(v):.4f}",
+                    "Máximo": f"{np.max(v):.4f}"
+                })
+        if desc_rows:
+            st.dataframe(pd.DataFrame(desc_rows), use_container_width=True)
+
+    # ═════════════════════════════════════════════════════════════════════
+    # MODO 2: DESGLOSE TRADICIONAL (PANEL POR SEXO E IPSI/CONTRA)
+    # ═════════════════════════════════════════════════════════════════════
+    else:
+        sexes_in_data = [s for s in ['MACHO', 'HEMBRA'] if s in df_base['sex'].unique()]
+        if not sexes_in_data:
+            sexes_in_data = df_base['sex'].dropna().unique().tolist()
+            
+        sex_groups = [(s, df_base[df_base['sex'] == s]) for s in sexes_in_data]
+        cols = st.columns(len(sex_groups))
+
+        for col_idx, (group_title, df_sub) in enumerate(sex_groups):
+            if df_sub.empty:
                 continue
-            c_idx = cond_idx_map[cond]
-            df_cond = df_sub[df_sub['condition'] == cond]
-            val_ipsi = df_cond[df_cond['section'] == 'IPSI'][selected_var_key].dropna().values
-            val_contra = df_cond[df_cond['section'] == 'CONTRA'][selected_var_key].dropna().values
 
-            df_ipsi_cond = df_cond[df_cond['section'] == 'IPSI']
-            df_contra_cond = df_cond[df_cond['section'] == 'CONTRA']
+            df_sub = df_sub.copy()
+            df_sub['condition'] = pd.Categorical(df_sub['condition'], categories=COND_ORDER, ordered=True)
+            df_plot = df_sub.sort_values('condition')
 
-            n_suj_ipsi = df_ipsi_cond['animal_id'].nunique() if 'animal_id' in df_ipsi_cond.columns else len(val_ipsi)
-            n_suj_contra = df_contra_cond['animal_id'].nunique() if 'animal_id' in df_contra_cond.columns else len(val_contra)
+            fig = go.Figure()
 
-            n_ipsi, m_ipsi, std_ipsi = len(val_ipsi), (np.mean(val_ipsi) if len(val_ipsi)>0 else 0.0), (np.std(val_ipsi) if len(val_ipsi)>0 else 0.0)
-            n_contra, m_contra, std_contra = len(val_contra), (np.mean(val_contra) if len(val_contra)>0 else 0.0), (np.std(val_contra) if len(val_contra)>0 else 0.0)
+            present_conds = [c for c in COND_ORDER if c in df_plot['condition'].unique()]
+            present_secs  = [s for s in ['IPSI', 'CONTRA'] if s in df_plot['section'].unique()]
+            cond_idx_map  = {c: i for i, c in enumerate(present_conds)}
 
-            stat_name = "Mann-Whitney U"
-            p = np.nan
+            for sec in present_secs:
+                df_sec = df_plot[df_plot['section'] == sec]
+                color = SECTION_COLORS.get(sec, '#ffffff')
+                fig.add_trace(go.Box(
+                    x=df_sec['condition'],
+                    y=df_sec[selected_var_key],
+                    name=f"{sec}",
+                    marker_color=color,
+                    boxmean='sd',
+                    boxpoints='all',
+                    jitter=0.35,
+                    pointpos=0,
+                    marker=dict(size=6, opacity=0.8, color=color),
+                    line=dict(color=color, width=2),
+                    text=df_sec['animal_id'] if 'animal_id' in df_sec.columns else None
+                ))
 
-            if len(val_ipsi) >= 2 and len(val_contra) >= 2:
-                if 'animal_id' in df_cond.columns and level_type != "Por Célula (distribuciones individuales)":
-                    merged_p = pd.merge(
-                        df_cond[df_cond['section'] == 'IPSI'][['animal_id', selected_var_key]].rename(columns={selected_var_key: 'v_ipsi'}),
-                        df_cond[df_cond['section'] == 'CONTRA'][['animal_id', selected_var_key]].rename(columns={selected_var_key: 'v_contra'}),
-                        on='animal_id'
-                    ).dropna()
-                    if len(merged_p) >= 2:
-                        try:
-                            stat, p = wilcoxon(merged_p['v_ipsi'].values, merged_p['v_contra'].values)
-                            stat_name = "Wilcoxon Pareado"
-                        except Exception:
+            # ─── COMPUTE Y BOUNDS FOR ANNOTATIONS ───
+            all_y = df_sub[selected_var_key].dropna().values
+            min_y = float(np.min(all_y)) if len(all_y) > 0 else 0.0
+            max_y = float(np.max(all_y)) if len(all_y) > 0 else 1.0
+            y_span = max_y - min_y if max_y != min_y else (max_y * 0.2 if max_y != 0 else 1.0)
+            
+            step_h = y_span * 0.08
+            current_y_offset = max_y + step_h
+
+            table_intra = []
+
+            # 1. INTRA-GROUP COMPARISONS (IPSI vs CONTRA in each condition)
+            for cond in present_conds:
+                if cond not in cond_idx_map:
+                    continue
+                c_idx = cond_idx_map[cond]
+                df_cond = df_sub[df_sub['condition'] == cond]
+                val_ipsi = df_cond[df_cond['section'] == 'IPSI'][selected_var_key].dropna().values
+                val_contra = df_cond[df_cond['section'] == 'CONTRA'][selected_var_key].dropna().values
+
+                df_ipsi_cond = df_cond[df_cond['section'] == 'IPSI']
+                df_contra_cond = df_cond[df_cond['section'] == 'CONTRA']
+
+                n_suj_ipsi = df_ipsi_cond['animal_id'].nunique() if 'animal_id' in df_ipsi_cond.columns else len(val_ipsi)
+                n_suj_contra = df_contra_cond['animal_id'].nunique() if 'animal_id' in df_contra_cond.columns else len(val_contra)
+
+                n_ipsi, m_ipsi, std_ipsi = len(val_ipsi), (np.mean(val_ipsi) if len(val_ipsi)>0 else 0.0), (np.std(val_ipsi) if len(val_ipsi)>0 else 0.0)
+                n_contra, m_contra, std_contra = len(val_contra), (np.mean(val_contra) if len(val_contra)>0 else 0.0), (np.std(val_contra) if len(val_contra)>0 else 0.0)
+
+                stat_name = "Mann-Whitney U"
+                p = np.nan
+
+                if len(val_ipsi) >= 2 and len(val_contra) >= 2:
+                    if 'animal_id' in df_cond.columns and level_type != "Por Célula (distribuciones individuales)":
+                        merged_p = pd.merge(
+                            df_cond[df_cond['section'] == 'IPSI'][['animal_id', selected_var_key]].rename(columns={selected_var_key: 'v_ipsi'}),
+                            df_cond[df_cond['section'] == 'CONTRA'][['animal_id', selected_var_key]].rename(columns={selected_var_key: 'v_contra'}),
+                            on='animal_id'
+                        ).dropna()
+                        if len(merged_p) >= 2:
+                            try:
+                                stat, p = wilcoxon(merged_p['v_ipsi'].values, merged_p['v_contra'].values)
+                                stat_name = "Wilcoxon Pareado"
+                            except Exception:
+                                stat, p = run_mwu(val_ipsi, val_contra)
+                        else:
                             stat, p = run_mwu(val_ipsi, val_contra)
                     else:
                         stat, p = run_mwu(val_ipsi, val_contra)
+
+                    stars = sig_stars(p)
+                    
+                    x0 = c_idx - 0.18
+                    x1 = c_idx + 0.18
+                    bar_y = current_y_offset
+                    tick_h = y_span * 0.015
+
+                    fig.add_shape(type='line', x0=x0, x1=x1, y0=bar_y, y1=bar_y, line=dict(color='#ffffff', width=1.5))
+                    fig.add_shape(type='line', x0=x0, x1=x0, y0=bar_y - tick_h, y1=bar_y, line=dict(color='#ffffff', width=1.5))
+                    fig.add_shape(type='line', x0=x1, x1=x1, y0=bar_y - tick_h, y1=bar_y, line=dict(color='#ffffff', width=1.5))
+                    fig.add_annotation(
+                        x=c_idx, y=bar_y + tick_h * 0.8,
+                        text=f"<b>{stars}</b>", showarrow=False,
+                        font=dict(size=12, color='#00ff88' if stars != 'ns' else '#aaaaaa'),
+                        xref='x', yref='y'
+                    )
+                    current_y_offset += step_h * 1.2
                 else:
-                    stat, p = run_mwu(val_ipsi, val_contra)
+                    stars = "ns"
 
-                stars = sig_stars(p)
-                
-                # Draw intra-group bar over IPSI and CONTRA boxes of condition
-                x0 = c_idx - 0.18
-                x1 = c_idx + 0.18
-                bar_y = current_y_offset
-                tick_h = y_span * 0.015
-
-                fig.add_shape(type='line', x0=x0, x1=x1, y0=bar_y, y1=bar_y, line=dict(color='#ffffff', width=1.5))
-                fig.add_shape(type='line', x0=x0, x1=x0, y0=bar_y - tick_h, y1=bar_y, line=dict(color='#ffffff', width=1.5))
-                fig.add_shape(type='line', x0=x1, x1=x1, y0=bar_y - tick_h, y1=bar_y, line=dict(color='#ffffff', width=1.5))
-                fig.add_annotation(
-                    x=c_idx, y=bar_y + tick_h * 0.8,
-                    text=f"<b>{stars}</b>", showarrow=False,
-                    font=dict(size=12, color='#00ff88' if stars != 'ns' else '#aaaaaa'),
-                    xref='x', yref='y'
-                )
-                current_y_offset += step_h * 1.2
-
-            else:
-                stars = "ns"
-
-            table_intra.append({
-                "Condición": cond,
-                "IPSI (Media ± DE)": f"{m_ipsi:.2f} ± {std_ipsi:.2f} (N_suj={n_suj_ipsi}, N_puntos={n_ipsi})",
-                "CONTRA (Media ± DE)": f"{m_contra:.2f} ± {std_contra:.2f} (N_suj={n_suj_contra}, N_puntos={n_contra})",
-                "Prueba": stat_name,
-                "p-valor": f"{p:.4f}" if not np.isnan(p) else "N/A",
-                "Significancia": stars
-            })
-
-        # 2. INTER-CONDITION COMPARISONS (Temporal evolution for IPSI and CONTRA)
-        table_inter = []
-
-        for sec in present_secs:
-            df_sec = df_sub[df_sub['section'] == sec]
-            sec_color = SECTION_COLORS.get(sec, '#ffffff')
-            sec_offset = -0.18 if sec == 'IPSI' else 0.18
-
-            cond_data = {}
-            for c in present_conds:
-                vals = df_sec[df_sec['condition'] == c][selected_var_key].dropna().values
-                if len(vals) > 0:
-                    cond_data[c] = vals
-
-            cond_present = [c for c in present_conds if c in cond_data]
-            pairs = [(cond_present[i], cond_present[j]) for i in range(len(cond_present)) for j in range(i+1, len(cond_present))]
-
-            for ca, cb in pairs:
-                stat, p = run_mwu(cond_data[ca], cond_data[cb])
-                p_adj = p * len(pairs) if use_bonferroni and not np.isnan(p) else p
-                stars = sig_stars(p_adj if use_bonferroni else p)
-
-                # Draw ALL comparisons (including ns)
-                xa = cond_idx_map[ca] + sec_offset
-                xb = cond_idx_map[cb] + sec_offset
-                bar_y = current_y_offset
-                tick_h = y_span * 0.015
-
-                fig.add_shape(type='line', x0=xa, x1=xb, y0=bar_y, y1=bar_y, line=dict(color=sec_color, width=1.5, dash='dot'))
-                fig.add_shape(type='line', x0=xa, x1=xa, y0=bar_y - tick_h, y1=bar_y, line=dict(color=sec_color, width=1.5))
-                fig.add_shape(type='line', x0=xb, x1=xb, y0=bar_y - tick_h, y1=bar_y, line=dict(color=sec_color, width=1.5))
-                fig.add_annotation(
-                    x=(xa + xb)/2, y=bar_y + tick_h * 0.8,
-                    text=f"<b>{sec}: {stars}</b>", showarrow=False,
-                    font=dict(size=11, color=sec_color if stars != 'ns' else '#aaaaaa'),
-                    xref='x', yref='y'
-                )
-                current_y_offset += step_h * 1.3
-
-                table_inter.append({
-                    "Comparación Temporal": f"{ca} vs {cb}",
-                    "Hemisferio": sec,
-                    "p-valor (Sin Ajustar)": f"{p:.4f}" if not np.isnan(p) else "N/A",
-                    "p-valor (Bonferroni)" if use_bonferroni else "p-valor": f"{p_adj:.4f}" if not np.isnan(p_adj) else "N/A",
+                table_intra.append({
+                    "Condición": cond,
+                    "IPSI (Media ± DE)": f"{m_ipsi:.2f} ± {std_ipsi:.2f} (N_suj={n_suj_ipsi}, N_puntos={n_ipsi})",
+                    "CONTRA (Media ± DE)": f"{m_contra:.2f} ± {std_contra:.2f} (N_suj={n_suj_contra}, N_puntos={n_contra})",
+                    "Prueba": stat_name,
+                    "p-valor": f"{p:.4f}" if not np.isnan(p) else "N/A",
                     "Significancia": stars
                 })
 
-        n_subjs_tot = df_sub['animal_id'].nunique() if 'animal_id' in df_sub.columns else len(df_sub)
-        n_points_tot = len(df_sub)
+            # 2. INTER-CONDITION COMPARISONS (Temporal evolution for IPSI and CONTRA)
+            table_inter = []
 
-        fig.update_layout(
-            title=dict(text=f"<b>{group_title} (N_suj = {n_subjs_tot}, N_puntos = {n_points_tot})</b>", font=dict(size=15, color=SEX_COLORS.get(group_title, '#bb86fc'))),
-            yaxis_title=var_options[selected_var_key],
-            xaxis_title="Condición Experimental",
-            boxmode='group',
-            template='plotly_dark',
-            height=500,
-            yaxis=dict(range=[min_y - step_h * 0.5, current_y_offset + step_h * 0.5]),
-            legend=dict(title="Hemisferio", orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-        )
+            for sec in present_secs:
+                df_sec = df_sub[df_sub['section'] == sec]
+                sec_color = SECTION_COLORS.get(sec, '#ffffff')
+                sec_offset = -0.18 if sec == 'IPSI' else 0.18
 
-        with cols[col_idx]:
-            st.plotly_chart(fig, use_container_width=True)
+                cond_data = {}
+                for c in present_conds:
+                    vals = df_sec[df_sec['condition'] == c][selected_var_key].dropna().values
+                    if len(vals) > 0:
+                        cond_data[c] = vals
 
-            # Display Statistical Summary Tables
-            st.markdown(f'<div class="table-caption">📋 Tabla 1: Comparación Intragrupo ({group_title} — IPSI vs CONTRA)</div>', unsafe_allow_html=True)
-            if table_intra:
-                df_t_intra = pd.DataFrame(table_intra)
-                st.dataframe(df_t_intra, use_container_width=True)
-            
-            st.markdown(f'<div class="table-caption">⏱️ Tabla 2: Evolución Temporal Intergrupo ({group_title})</div>', unsafe_allow_html=True)
-            if table_inter:
-                df_t_inter = pd.DataFrame(table_inter)
-                st.dataframe(df_t_inter, use_container_width=True)
+                cond_present = [c for c in present_conds if c in cond_data]
+                pairs = [(cond_present[i], cond_present[j]) for i in range(len(cond_present)) for j in range(i+1, len(cond_present))]
+
+                for ca, cb in pairs:
+                    stat, p = run_mwu(cond_data[ca], cond_data[cb])
+                    p_adj = p * len(pairs) if use_bonferroni and not np.isnan(p) else p
+                    stars = sig_stars(p_adj if use_bonferroni else p)
+
+                    xa = cond_idx_map[ca] + sec_offset
+                    xb = cond_idx_map[cb] + sec_offset
+                    bar_y = current_y_offset
+                    tick_h = y_span * 0.015
+
+                    fig.add_shape(type='line', x0=xa, x1=xb, y0=bar_y, y1=bar_y, line=dict(color=sec_color, width=1.5, dash='dot'))
+                    fig.add_shape(type='line', x0=xa, x1=xa, y0=bar_y - tick_h, y1=bar_y, line=dict(color=sec_color, width=1.5))
+                    fig.add_shape(type='line', x0=xb, x1=xb, y0=bar_y - tick_h, y1=bar_y, line=dict(color=sec_color, width=1.5))
+                    fig.add_annotation(
+                        x=(xa + xb)/2, y=bar_y + tick_h * 0.8,
+                        text=f"<b>{sec}: {stars}</b>", showarrow=False,
+                        font=dict(size=11, color=sec_color if stars != 'ns' else '#aaaaaa'),
+                        xref='x', yref='y'
+                    )
+                    current_y_offset += step_h * 1.3
+
+                    table_inter.append({
+                        "Comparación Temporal": f"{ca} vs {cb}",
+                        "Hemisferio": sec,
+                        "p-valor (Sin Ajustar)": f"{p:.4f}" if not np.isnan(p) else "N/A",
+                        "p-valor (Bonferroni)" if use_bonferroni else "p-valor": f"{p_adj:.4f}" if not np.isnan(p_adj) else "N/A",
+                        "Significancia": stars
+                    })
+
+            n_subjs_tot = df_sub['animal_id'].nunique() if 'animal_id' in df_sub.columns else len(df_sub)
+            n_points_tot = len(df_sub)
+
+            fig.update_layout(
+                title=dict(text=f"<b>{group_title} (N_suj = {n_subjs_tot}, N_puntos = {n_points_tot})</b>", font=dict(size=15, color=SEX_COLORS.get(group_title, '#bb86fc'))),
+                yaxis_title=var_options[selected_var_key],
+                xaxis_title="Condición Experimental",
+                boxmode='group',
+                template='plotly_dark',
+                height=500,
+                yaxis=dict(range=[min_y - step_h * 0.5, current_y_offset + step_h * 0.5]),
+                legend=dict(title="Hemisferio", orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
+
+            with cols[col_idx]:
+                st.plotly_chart(fig, use_container_width=True)
+
+                st.markdown(f'<div class="table-caption">📋 Tabla 1: Comparación Intragrupo ({group_title} — IPSI vs CONTRA)</div>', unsafe_allow_html=True)
+                if table_intra:
+                    df_t_intra = pd.DataFrame(table_intra)
+                    st.dataframe(df_t_intra, use_container_width=True)
+                
+                st.markdown(f'<div class="table-caption">⏱️ Tabla 2: Evolución Temporal Intergrupo ({group_title})</div>', unsafe_allow_html=True)
+                if table_inter:
+                    df_t_inter = pd.DataFrame(table_inter)
+                    st.dataframe(df_t_inter, use_container_width=True)
 
 
 # 1. TAB PV+
@@ -717,6 +987,50 @@ with tab_pnn:
 
         run_stats_layout(df_pnn_base, PNN_VARS, selected_pnn_var, "Redes Perineuronales PNN")
 
+@st.cache_data
+def get_image_wfa_component_metrics(mask_file, roi_json_path, area_scope, px_size=0.65):
+    if not os.path.exists(mask_file):
+        return None
+    try:
+        stk = tiff.imread(mask_file)
+        if len(stk.shape) < 3 or stk.shape[0] < 5:
+            return None
+        m_wfa = stk[2]
+        w_raw = stk[4]
+
+        if area_scope != "🌐 Toda la Imagen (Global)" and os.path.exists(roi_json_path):
+            d_roi = load_rois(roi_json_path)
+            target_reg = 'ALL' if 'combinadas' in area_scope else area_scope.split(' ')[-1]
+            roi_mask = create_roi_mask(w_raw.shape, d_roi, target_region=target_reg)
+        else:
+            roi_mask = np.ones_like(w_raw, dtype=bool)
+
+        diff_mask = (m_wfa == 0) & roi_mask
+        pnn_mask = (m_wfa > 0) & roi_mask
+
+        diff_mean = float(np.mean(w_raw[diff_mask])) if np.sum(diff_mask) > 0 else 0.0
+        diff_sum = float(np.sum(w_raw[diff_mask]))
+        tot_mean = float(np.mean(w_raw[roi_mask])) if np.sum(roi_mask) > 0 else 0.0
+        tot_sum = float(np.sum(w_raw[roi_mask]))
+        pnn_mean = float(np.mean(w_raw[pnn_mask])) if np.sum(pnn_mask) > 0 else 0.0
+        pnn_sum = float(np.sum(w_raw[pnn_mask]))
+
+        diff_norm = float(diff_mean / (np.mean(w_raw) + 1e-8))
+        ratio_pnn_diff = float(pnn_mean / (diff_mean + 1e-8)) if diff_mean > 0 else 0.0
+
+        return {
+            'mean_diffuse_wfa_intensity_raw': diff_mean,
+            'diffuse_wfa_fluorescence_norm': diff_norm,
+            'total_diffuse_wfa_signal': diff_sum,
+            'mean_pnn_wfa_intensity_raw': pnn_mean,
+            'total_pnn_wfa_signal': pnn_sum,
+            'ratio_pnn_to_diffuse': ratio_pnn_diff,
+            'mean_wfa_intensity_raw': tot_mean,
+            'total_integrated_wfa_signal': tot_sum
+        }
+    except Exception:
+        return None
+
 def compute_dynamic_lupori_metrics(valid_imgs_df, active_cells_df, area_scope):
     px_size = 0.65
     rows = []
@@ -764,8 +1078,28 @@ def compute_dynamic_lupori_metrics(valid_imgs_df, active_cells_df, area_scope):
 
         pnn_energy = float(pnn_density * wfa_pericell)
         coloc_energy = float(coloc_density * wfa_pericell)
-        wfa_sum = float(img_cells['wfa_sum_intensity'].sum()) if not img_cells.empty and 'wfa_sum_intensity' in img_cells.columns else 0.0
-        diffuse_wfa = float(img_cells['wfa_mean_intensity'].mean()) if not img_cells.empty and 'wfa_mean_intensity' in img_cells.columns else 0.0
+
+        # Check segmented masks for precise diffuse WFA calculation (outside PNN circles)
+        mask_file = os.path.join("data/processed/segmented", grp, sec, f"{base_name}_masks.tif")
+        wfa_comp = get_image_wfa_component_metrics(mask_file, roi_json_path, area_scope, px_size)
+
+        if wfa_comp is not None:
+            diffuse_wfa_raw = wfa_comp['mean_diffuse_wfa_intensity_raw']
+            diffuse_wfa_norm = wfa_comp['diffuse_wfa_fluorescence_norm']
+            diffuse_wfa_sum = wfa_comp['total_diffuse_wfa_signal']
+            pnn_wfa_raw = wfa_comp['mean_pnn_wfa_intensity_raw']
+            ratio_pnn_diff = wfa_comp['ratio_pnn_to_diffuse']
+            total_wfa_sum = wfa_comp['total_integrated_wfa_signal']
+            mean_wfa_raw = wfa_comp['mean_wfa_intensity_raw']
+        else:
+            wfa_sum = float(img_cells['wfa_sum_intensity'].sum()) if not img_cells.empty and 'wfa_sum_intensity' in img_cells.columns else 0.0
+            diffuse_wfa_raw = float(img_cells['wfa_mean_intensity'].mean()) if not img_cells.empty and 'wfa_mean_intensity' in img_cells.columns else 0.0
+            diffuse_wfa_norm = diffuse_wfa_raw / 255.0
+            diffuse_wfa_sum = wfa_sum
+            pnn_wfa_raw = float(pnn_cells['wfa_mean_intensity'].mean()) if not pnn_cells.empty and 'wfa_mean_intensity' in pnn_cells.columns else diffuse_wfa_raw
+            ratio_pnn_diff = (pnn_wfa_raw / (diffuse_wfa_raw + 1e-8)) if diffuse_wfa_raw > 0 else 1.0
+            total_wfa_sum = wfa_sum
+            mean_wfa_raw = diffuse_wfa_raw
 
         sex, cond, order = parse_group(grp)
 
@@ -776,10 +1110,16 @@ def compute_dynamic_lupori_metrics(valid_imgs_df, active_cells_df, area_scope):
             'coloc_density_mm2': coloc_density, 'pct_pv_surrounded_by_pnn': pct_pv,
             'mean_pnn_pericellular_wfa_norm': wfa_pericell,
             'pnn_energy': pnn_energy, 'coloc_energy': coloc_energy,
-            'total_integrated_wfa_signal': wfa_sum,
-            'integrated_wfa_density_mm2': float(wfa_sum / area_mm2) if area_mm2 > 0 else 0.0,
-            'mean_wfa_intensity_raw': diffuse_wfa,
-            'diffuse_wfa_fluorescence': diffuse_wfa,
+            'mean_diffuse_wfa_intensity_raw': diffuse_wfa_raw,
+            'diffuse_wfa_fluorescence_norm': diffuse_wfa_norm,
+            'total_diffuse_wfa_signal': diffuse_wfa_sum,
+            'diffuse_wfa_density_mm2': float(diffuse_wfa_sum / area_mm2) if area_mm2 > 0 else 0.0,
+            'mean_pnn_wfa_intensity_raw': pnn_wfa_raw,
+            'ratio_pnn_to_diffuse': ratio_pnn_diff,
+            'total_integrated_wfa_signal': total_wfa_sum,
+            'integrated_wfa_density_mm2': float(total_wfa_sum / area_mm2) if area_mm2 > 0 else 0.0,
+            'mean_wfa_intensity_raw': mean_wfa_raw,
+            'diffuse_wfa_fluorescence': diffuse_wfa_norm,
             'image_area_mm2': area_mm2
         })
 
@@ -811,6 +1151,7 @@ with tab_lupori:
             "coloc_density_mm2": "Densidad de Coexpresión (células PV+/PNN+ / mm²)",
             "pct_pv_surrounded_by_pnn": "% PV+ rodeadas por PNN+ (Coexpresión)",
             "mean_pnn_pericellular_wfa_norm": "Intensidad WFA Circundante (Norm 0-1)",
+            "mean_diffuse_wfa_intensity_raw": "Intensidad Media WFA Difuso (Fuera de PNN - Raw)",
             "diffuse_wfa_fluorescence": "Fluorescencia Difusa WFA (Norm 0-1)"
         }
         
@@ -833,14 +1174,17 @@ with tab_lupori:
         st.markdown("### 📋 Tabla Completa Consolidada Lupori:")
         st.dataframe(df_lup_filtered, use_container_width=True)
 
-# 4. TAB SEÑAL GLOBAL INTEGRADA WFA
+# 4. TAB SEÑAL GLOBAL Y COMPONENTE DIFUSO WFA
 with tab_global_wfa:
-    st.header("🌐 Señal Global Integrada de WFA")
+    st.header("🌐 Señal Global y Componente Difuso de WFA")
     st.markdown("""
-    **Medición de Fluorescencia Global Integrada:**
-    * **Señal Global Integrada WFA ($\sum \text{Intensidad}$):** Suma total de fluorescencia acumulada del canal WFA a través de todo el tejido del preparado o ROI.
-    * **Densidad de Señal Integrada por $\text{mm}^2$:** Intensidad WFA integrada dividida entre el área total del preparado o ROI en $\text{mm}^2$.
-    * **Fluorescencia Difusa/Global WFA:** Intensidad promedio global normalizada ($0\text{--}1$) en el canal WFA.
+    **Medición de Componentes de Fluorescencia WFA:**
+    * **Intensidad Media WFA Difusa (Raw):** Señal promedio de WFA en todo el tejido o ROI que se encuentra **fuera del círculo de cuantificación de las PNNs** ($m_{\\text{wfa}} = 0$). Mide la matriz extracelular difusa libre de condensaciones perineuronales.
+    * **Fluorescencia Difusa WFA Normalizada:** Señal difusa normalizada respecto a la fluorescencia global del corte ($0\\text{--}1$).
+    * **Intensidad Media WFA Perineuronal (Raw):** Señal promedio de WFA **dentro de los círculos de cuantificación de las PNNs**.
+    * **Ratio de Contraste (PNN / Difuso):** Cociente $\\frac{\\text{Intensidad Media PNN}}{\\text{Intensidad Media Difusa}}$, indicando la definición o nitidez de las redes sobre el fondo.
+    * **Señal Global Integrada WFA ($\sum \\text{Intensidad}$):** Suma total de fluorescencia acumulada de WFA en todo el tejido/ROI.
+    * **Densidad de Señal Integrada por $\\text{mm}^2$:** Intensidad WFA integrada dividida entre el área del preparado o ROI en $\\text{mm}^2$.
     """)
 
     df_gwfa_filtered = compute_dynamic_lupori_metrics(valid_images_df, active_cells_df, area_scope)
@@ -849,19 +1193,25 @@ with tab_global_wfa:
         st.info("No se encontraron métricas de señal global WFA disponibles.")
     else:
         GLOBAL_WFA_VARS = {
-            "total_integrated_wfa_signal": "Señal Global Integrada WFA (Suma Total Intensidad)",
+            "mean_diffuse_wfa_intensity_raw": "Intensidad Media WFA Difusa (Fuera de Círculos PNN - Raw)",
+            "diffuse_wfa_fluorescence_norm": "Fluorescencia Difusa WFA Normalizada (Norm 0-1)",
+            "mean_pnn_wfa_intensity_raw": "Intensidad Media WFA Perineuronal (Dentro de Círculos PNN - Raw)",
+            "ratio_pnn_to_diffuse": "Ratio de Contraste (Intensidad PNN / Intensidad Difusa)",
+            "total_diffuse_wfa_signal": "Señal Integrada Difusa WFA (Suma Fuera de PNN)",
+            "diffuse_wfa_density_mm2": "Densidad de Señal Difusa WFA por mm²",
+            "total_integrated_wfa_signal": "Señal Global Integrada WFA (Suma Total Tejido)",
             "integrated_wfa_density_mm2": "Densidad de Señal Integrada WFA por mm²",
-            "mean_wfa_intensity_raw": "Intensidad Media Global WFA (Raw)",
-            "diffuse_wfa_fluorescence": "Fluorescencia Difusa/Global WFA (Norm 0-1)"
+            "mean_wfa_intensity_raw": "Intensidad Media Global WFA (Tejido Completo - Raw)"
         }
 
-        sel_gwfa_var = st.selectbox("Seleccionar Métrica de Señal Global WFA:", list(GLOBAL_WFA_VARS.keys()), format_func=lambda x: GLOBAL_WFA_VARS[x], key="gwfa_var")
+        sel_gwfa_var = st.selectbox("Seleccionar Métrica de Señal Global / Difusa WFA:", list(GLOBAL_WFA_VARS.keys()), format_func=lambda x: GLOBAL_WFA_VARS[x], key="gwfa_var")
 
         if level_type == "Por Célula (distribuciones individuales)":
             df_gwfa_base = active_cells_df.copy()
-            if 'total_integrated_wfa_signal' not in df_gwfa_base.columns: df_gwfa_base['total_integrated_wfa_signal'] = df_gwfa_base['wfa_sum_intensity']
-            if 'integrated_wfa_density_mm2' not in df_gwfa_base.columns: df_gwfa_base['integrated_wfa_density_mm2'] = df_gwfa_base['wfa_sum_intensity']
-            if 'mean_wfa_intensity_raw' not in df_gwfa_base.columns: df_gwfa_base['mean_wfa_intensity_raw'] = df_gwfa_base['wfa_mean_intensity']
+            for k in GLOBAL_WFA_VARS.keys():
+                if k not in df_gwfa_base.columns and k in df_gwfa_filtered.columns:
+                    mapping = df_gwfa_filtered.set_index('image_name')[k].to_dict()
+                    df_gwfa_base[k] = df_gwfa_base['image_name'].map(mapping)
         elif level_type == "Por Sujeto (animal, promediando cortes)":
             df_gwfa_base = df_gwfa_filtered.groupby(['group', 'section', 'animal_id']).mean(numeric_only=True).reset_index()
             df_gwfa_base['sex']       = df_gwfa_base['group'].map(lambda g: parse_group(g)[0])
@@ -869,7 +1219,7 @@ with tab_global_wfa:
         else:
             df_gwfa_base = df_gwfa_filtered.copy()
 
-        run_stats_layout(df_gwfa_base, GLOBAL_WFA_VARS, sel_gwfa_var, "Señal Global Integrada WFA")
+        run_stats_layout(df_gwfa_base, GLOBAL_WFA_VARS, sel_gwfa_var, "Señal Global y Difusa WFA")
 
-        st.markdown("### 📋 Tabla Consolidada de Señal Global WFA:")
+        st.markdown("### 📋 Tabla Consolidada de Señal Global y Difusa WFA:")
         st.dataframe(df_gwfa_filtered, use_container_width=True)
