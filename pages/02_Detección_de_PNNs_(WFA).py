@@ -24,6 +24,9 @@ if src_path not in sys.path:
 
 from image_io import load_channels_tif, get_or_create_mip
 from ai_models import load_models
+import importlib
+import pipeline_runner
+importlib.reload(pipeline_runner)
 from pipeline_runner import run_pipeline_on_file, normalize_wfa_for_detection
 from omegaconf import OmegaConf
 
