@@ -7,6 +7,7 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
 from scipy.stats import chi2_contingency
+from sklearn.metrics import normalized_mutual_info_score, homogeneity_score
 
 import torch
 import torch.nn as nn
@@ -89,14 +90,81 @@ def parse_group(name):
     sex = 'HEMBRA' if 'HEMBRA' in name_norm else 'MACHO' if 'MACHO' in name_norm else None
     if 'NONE' in name_norm: cond, order = 'NONE', 0
     elif '3' in name_norm and 'DIA' in name_norm: cond, order = '3 DÍAS', 1
-    elif '14' in name_norm and 'DIA' in name_norm: cond, order = '14 DÍAS', 2
+    elif '7' in name_norm and 'DIA' in name_norm: cond, order = '7 DÍAS', 2
+    elif '14' in name_norm and 'DIA' in name_norm: cond, order = '14 DÍAS', 3
     else: cond, order = name, 99
 
     return sex, cond, order
 
-COND_ORDER  = ['NONE', '3 DÍAS', '14 DÍAS']
-COND_COLORS = {'NONE': '#4facfe', '3 DÍAS': '#bb86fc', '14 DÍAS': '#00ffcc'}
+COND_ORDER  = ['NONE', '3 DÍAS', '7 DÍAS', '14 DÍAS']
+COND_COLORS = {'NONE': '#4facfe', '3 DÍAS': '#bb86fc', '7 DÍAS': '#f59e0b', '14 DÍAS': '#00ffcc'}
 SEX_COLORS  = {'MACHO': '#5bc0de', 'HEMBRA': '#e83e8c'}
+
+def get_color_discrete_map(color_by, unique_values):
+    if color_by == 'condition':
+        return COND_COLORS
+    elif color_by == 'section':
+        return {'IPSI': '#00f2fe', 'CONTRA': '#ff7b00'}
+    elif color_by == 'sex':
+        return SEX_COLORS
+    elif color_by == 'cell_type':
+        return {'PV+/PNN+': '#00ff7f', 'PV-/PNN+': '#ff4757', 'PV+/PNN-': '#ffa502'}
+    elif color_by == 'roi_region':
+        return {'A': '#00ffff', 'B': '#ff00ff', 'C': '#ffff00', 'NONE': '#64748b'}
+    elif color_by == 'cond_sec':
+        cond_sec_palette = {
+            'NONE (CONTRA)': '#38bdf8', 'NONE (IPSI)': '#00f2fe',
+            '3 DÍAS (CONTRA)': '#c084fc', '3 DÍAS (IPSI)': '#a855f7',
+            '7 DÍAS (CONTRA)': '#fbbf24', '7 DÍAS (IPSI)': '#f59e0b',
+            '14 DÍAS (CONTRA)': '#34d399', '14 DÍAS (IPSI)': '#10b981'
+        }
+        res = {str(v): cond_sec_palette[str(v)] for v in unique_values if str(v) in cond_sec_palette}
+        if len(res) == len(unique_values):
+            return res
+    elif color_by == 'sex_cond':
+        sex_cond_palette = {
+            'MACHO - NONE': '#38bdf8', 'MACHO - 3 DÍAS': '#818cf8', 'MACHO - 7 DÍAS': '#fbbf24', 'MACHO - 14 DÍAS': '#34d399',
+            'HEMBRA - NONE': '#f472b6', 'HEMBRA - 3 DÍAS': '#e879f9', 'HEMBRA - 7 DÍAS': '#fb923c', 'HEMBRA - 14 DÍAS': '#2dd4bf'
+        }
+        res = {str(v): sex_cond_palette[str(v)] for v in unique_values if str(v) in sex_cond_palette}
+        if len(res) == len(unique_values):
+            return res
+            
+    qual_palette = [
+        '#00f2fe', '#bb86fc', '#ff7b00', '#00ff7f', '#e83e8c', '#ffff00',
+        '#f59e0b', '#38bdf8', '#c084fc', '#4ade80', '#fb7185', '#a3e635',
+        '#f43f5e', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899', '#14b8a6'
+    ]
+    return {str(val): qual_palette[idx % len(qual_palette)] for idx, val in enumerate(unique_values)}
+
+def compute_cramers_v(contingency_table):
+    if contingency_table.empty or contingency_table.shape[0] < 2 or contingency_table.shape[1] < 2:
+        return 0.0
+    chi2, _, _, _ = chi2_contingency(contingency_table)
+    n = contingency_table.values.sum()
+    if n == 0:
+        return 0.0
+    min_dim = min(contingency_table.shape[0] - 1, contingency_table.shape[1] - 1)
+    if min_dim == 0:
+        return 0.0
+    return float(np.sqrt(chi2 / (n * min_dim)))
+
+def compute_standardized_residuals(contingency_table):
+    O = contingency_table.values.astype(float)
+    N = O.sum()
+    if N == 0 or contingency_table.shape[0] < 2 or contingency_table.shape[1] < 2:
+        return pd.DataFrame(0.0, index=contingency_table.index, columns=contingency_table.columns)
+    
+    R = O.sum(axis=1, keepdims=True)
+    C = O.sum(axis=0, keepdims=True)
+    E = (R @ C) / N
+    
+    row_prop = R / N
+    col_prop = C / N
+    
+    denom = np.sqrt(E * (1.0 - row_prop) * (1.0 - col_prop) + 1e-8)
+    adj_residuals = (O - E) / denom
+    return pd.DataFrame(adj_residuals, index=contingency_table.index, columns=contingency_table.columns)
 
 def get_dataset_mtime_hash():
     max_mtime = 0.0
@@ -209,8 +277,10 @@ if st.sidebar.button("🔄 Recargar Datos del Disco", key="ae_reload_btn"):
     st.cache_data.clear()
     st.rerun()
 
+st.sidebar.subheader("🎯 Filtros Poblacionales de Muestra")
+
 area_scope = st.sidebar.radio(
-    "Área de Cuantificación:",
+    "Área de Cuantificación / ROIs:",
     [
         "🌐 Toda la Imagen (Global)",
         "🎯 Todas las ROIs (A, B y C combinadas)",
@@ -222,18 +292,7 @@ area_scope = st.sidebar.radio(
     key="ae_area_scope"
 )
 
-use_bonferroni = st.sidebar.checkbox(
-    "Corrección Bonferroni (para comparaciones múltiples)",
-    value=True, key="ae_bonferroni"
-)
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("🤖 Configuración del Autoencoder")
-latent_dim = st.sidebar.slider("Dimensiones Espacio Latente", 2, 5, 3, step=1)
-epochs = st.sidebar.select_slider("Épocas de Entrenamiento PyTorch", options=[10, 20, 30, 50, 100], value=30)
-n_clusters = st.sidebar.slider("Número de Clusters Fenotípicos (K-Means)", 2, 8, 3, step=1)
-
-# Apply ROI Filter if selected
+# 1. Apply ROI Filter
 if area_scope == "🎯 Todas las ROIs (A, B y C combinadas)":
     valid_images_df = df_all_images[df_all_images['has_roi_any'] == True].copy()
     active_cells_df = df_raw_cells[(df_raw_cells['is_in_roi'] == True) & (df_raw_cells['image_name'].isin(valid_images_df['image_name']))].copy()
@@ -261,24 +320,94 @@ active_cells_df['sex']       = active_cells_df['group'].map(lambda g: group_meta
 active_cells_df['condition'] = active_cells_df['group'].map(lambda g: group_meta.get(g, {}).get('condition'))
 active_cells_df = active_cells_df[active_cells_df['sex'].notna() & active_cells_df['condition'].notna() & active_cells_df['section'].isin(['IPSI', 'CONTRA'])].reset_index(drop=True)
 
+# Dynamic Filters for Hemisphere, Sex, Condition and Cell Type
+section_scope = st.sidebar.radio(
+    "Hemisferio / Sección:",
+    ["🌐 Ambos (IPSI + CONTRA)", "⚡ Solo IPSI (Lesión / Exp)", "🛡️ Solo CONTRA (Control)"],
+    index=0,
+    key="ae_section_scope"
+)
+if section_scope == "⚡ Solo IPSI (Lesión / Exp)":
+    active_cells_df = active_cells_df[active_cells_df['section'] == 'IPSI']
+elif section_scope == "🛡️ Solo CONTRA (Control)":
+    active_cells_df = active_cells_df[active_cells_df['section'] == 'CONTRA']
+
+sex_scope = st.sidebar.radio(
+    "Sexo:",
+    ["👫 Ambos (Macho + Hembra)", "♂️ Solo MACHOS", "♀️ Solo HEMBRAS"],
+    index=0,
+    key="ae_sex_scope"
+)
+if sex_scope == "♂️ Solo MACHOS":
+    active_cells_df = active_cells_df[active_cells_df['sex'] == 'MACHO']
+elif sex_scope == "♀️ Solo HEMBRAS":
+    active_cells_df = active_cells_df[active_cells_df['sex'] == 'HEMBRA']
+
+# Dynamic Conditions Filter
+all_available_conds = [c for c in COND_ORDER if c in active_cells_df['condition'].unique()]
+if not all_available_conds:
+    all_available_conds = sorted(active_cells_df['condition'].dropna().unique().tolist())
+
+selected_conds = st.sidebar.multiselect(
+    "Condiciones Experimentales a incluir:",
+    options=all_available_conds,
+    default=all_available_conds,
+    key="ae_selected_conds"
+)
+if selected_conds:
+    active_cells_df = active_cells_df[active_cells_df['condition'].isin(selected_conds)]
+
+# Cell Type Filter
+avail_cell_types = ["Todos los tipos"] + sorted(active_cells_df['cell_type'].dropna().unique().tolist())
+cell_type_scope = st.sidebar.selectbox(
+    "Tipo Celular:",
+    avail_cell_types,
+    index=0,
+    key="ae_cell_type_scope"
+)
+if cell_type_scope != "Todos los tipos":
+    active_cells_df = active_cells_df[active_cells_df['cell_type'] == cell_type_scope]
+
+active_cells_df = active_cells_df.reset_index(drop=True)
+
+# Generate composite grouping columns
+if not active_cells_df.empty:
+    active_cells_df['cond_sec'] = active_cells_df['condition'] + " (" + active_cells_df['section'] + ")"
+    active_cells_df['sex_cond'] = active_cells_df['sex'] + " - " + active_cells_df['condition']
+    active_cells_df['group_sec'] = active_cells_df['group'] + " - " + active_cells_df['section']
+
+use_bonferroni = st.sidebar.checkbox(
+    "Corrección Bonferroni (para comparaciones múltiples)",
+    value=True, key="ae_bonferroni"
+)
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("🤖 Configuración del Autoencoder")
+latent_dim = st.sidebar.slider("Dimensiones Espacio Latente", 2, 5, 3, step=1)
+epochs = st.sidebar.select_slider("Épocas de Entrenamiento PyTorch", options=[10, 20, 30, 50, 100], value=30)
+n_clusters = st.sidebar.slider("Número de Clusters Fenotípicos (K-Means)", 2, 8, 3, step=1)
+
 # Summary Card
 total_imgs_all = len(df_all_images)
-valid_imgs_cnt = len(valid_images_df)
+valid_imgs_cnt = active_cells_df['image_name'].nunique() if not active_cells_df.empty else 0
 excluded_imgs_cnt = total_imgs_all - valid_imgs_cnt
 total_cells_cnt = len(active_cells_df)
 total_subjs_cnt = active_cells_df['animal_id'].nunique() if not active_cells_df.empty else 0
 
 st.markdown('<div class="stats-card">', unsafe_allow_html=True)
 c_b1, c_b2, c_b3, c_b4 = st.columns(4)
-c_b1.metric("📐 Área Seleccionada", area_scope.split(" ")[1] if " " in area_scope else area_scope)
+c_b1.metric("📐 Filtro / Población Activa", f"{len(active_cells_df['condition'].unique()) if not active_cells_df.empty else 0} Conds")
 c_b2.metric("🐀 Sujetos Activos (N_suj)", f"{total_subjs_cnt}")
 c_b3.metric("🔬 Preparados Validados (N_prep)", f"{valid_imgs_cnt} / {total_imgs_all}")
 c_b4.metric("🧫 Células en Muestra (N_células)", f"{total_cells_cnt:,}")
 
-if excluded_imgs_cnt > 0:
-    st.warning(f"⚠️ **Atención sobre Tamaño Muestral ($N$):** Se excluyeron **{excluded_imgs_cnt}** preparados del análisis porque no tenían la ROI seleccionada (`{area_scope}`) trazada. Se analizan **{valid_imgs_cnt}** preparados para asegurar consistencia.")
+if total_cells_cnt == 0:
+    st.error("⚠️ **No hay células que coincidan con la combinación de filtros seleccionada.** Por favor ajusta los filtros en la barra lateral.")
+    st.stop()
+elif excluded_imgs_cnt > 0:
+    st.warning(f"ℹ️ **Filtros Activos:** Se analizan **{total_cells_cnt:,} células** de **{valid_imgs_cnt}** preparados correspondientes al subconjunto filtrado.")
 else:
-    st.success(f"✅ **Consistencia del Muestreo ($N$):** Se están considerando los **{valid_imgs_cnt}** preparados completos del dataset.")
+    st.success(f"✅ **Muestreo Completo:** Se están considerando todas las **{total_cells_cnt:,} células** de los **{valid_imgs_cnt}** preparados del dataset.")
 
 st.markdown('</div>', unsafe_allow_html=True)
 
@@ -356,6 +485,26 @@ def fit_autoencoder_and_clusters(df_features, feature_names, lat_dim, ep_cnt, k_
 
     return latent_np, clusters
 
+def get_descriptive_cluster_names(df_temp, cluster_col, cond_col='condition', wfa_col='wfa_pericellular_norm'):
+    cluster_names = {}
+    mean_wfa_global = df_temp[wfa_col].mean() if wfa_col in df_temp.columns else 1.0
+    for cl in sorted(df_temp[cluster_col].unique()):
+        sub = df_temp[df_temp[cluster_col] == cl]
+        if sub.empty:
+            cluster_names[cl] = f"Cluster {cl+1}"
+            continue
+        
+        # Dominant condition
+        dom_cond = sub[cond_col].mode().iloc[0] if cond_col in sub.columns and not sub[cond_col].empty else f"C{cl+1}"
+        dom_pct = int(round((sub[cond_col] == dom_cond).mean() * 100)) if cond_col in sub.columns else 0
+        
+        # Relative WFA intensity
+        mean_wfa_cl = sub[wfa_col].mean() if wfa_col in sub.columns else 1.0
+        intensity_tag = "WFA-Alto" if mean_wfa_cl >= 1.15 * mean_wfa_global else ("WFA-Bajo" if mean_wfa_cl <= 0.85 * mean_wfa_global else "WFA-Medio")
+        
+        cluster_names[cl] = f"Cluster {cl+1} [{intensity_tag} | {dom_cond} {dom_pct}%]"
+    return cluster_names
+
 # ─── TAB 1: AUTOENCODER & ESPACIO LATENTE ───
 with tab_ae:
     st.header("🧠 Red Neuronal Autoencoder & Reducción Espacial")
@@ -374,50 +523,87 @@ with tab_ae:
         df_ae = active_cells_df.copy()
         for i in range(latent_dim):
             df_ae[f'Z_{i+1}'] = latent_coords[:, i]
-        df_ae['Cluster'] = [f"Fenotipo {c+1}" for c in cluster_labels]
+            
+        df_ae['Cluster_ID'] = cluster_labels
+        descriptive_map = get_descriptive_cluster_names(df_ae, 'Cluster_ID', cond_col='cond_sec')
+        df_ae['Cluster_Descriptivo'] = df_ae['Cluster_ID'].map(descriptive_map)
+        df_ae['Cluster_Simple'] = [f"Cluster {c+1}" for c in cluster_labels]
 
         col_ae1, col_ae2 = st.columns([3, 1])
         with col_ae2:
             st.markdown("### 🎨 Parámetros Visuales")
+            
+            cluster_naming = st.radio(
+                "Nomenclatura de Clusters IA:",
+                ["🏷️ Descriptiva (Biomarcador + Grupo Dominante)", "🔢 Numérica Simple (Cluster 1, 2...)"],
+                index=0,
+                key="ae_cluster_naming"
+            )
+            df_ae['Cluster'] = df_ae['Cluster_Descriptivo'] if "Descriptiva" in cluster_naming else df_ae['Cluster_Simple']
+
+            color_options = [
+                "Cluster",
+                "condition",
+                "cond_sec",
+                "sex_cond",
+                "section",
+                "sex",
+                "cell_type",
+                "roi_region",
+                "group"
+            ]
+            
+            format_dict = {
+                "Cluster": "🤖 Clusters IA (K-Means)",
+                "condition": "🏷️ Condición (NONE, 3d, 7d, 14d)",
+                "cond_sec": "⚡ Condición × Hemisferio (ej. 3d IPSI)",
+                "sex_cond": "👫 Sexo × Condición (ej. Macho 3d)",
+                "section": "🛡️ Hemisferio (IPSI / CONTRA)",
+                "sex": "⚧ Sexo (MACHO / HEMBRA)",
+                "cell_type": "🧪 Tipo Celular (PV+/PNN+)",
+                "roi_region": "🎯 Región ROI (A, B, C)",
+                "group": "🔬 Grupo Completo"
+            }
+            
             color_by = st.selectbox(
                 "Colorear Puntos por:",
-                ["Cluster", "condition", "section", "sex", "cell_type"],
-                format_func=lambda x: {
-                    "Cluster": "Fenotipo Celular (Cluster)",
-                    "condition": "Condición Experimental",
-                    "section": "Hemisferio (IPSI / CONTRA)",
-                    "sex": "Sexo (MACHO / HEMBRA)",
-                    "cell_type": "Tipo Celular (PV+/PNN+)"
-                }.get(x, x)
+                color_options,
+                format_func=lambda x: format_dict.get(x, x),
+                key="ae_color_by"
             )
 
         with col_ae1:
+            hover_cols = ['animal_id', 'group', 'section', 'cell_type', 'roi_region']
+            color_map = get_color_discrete_map(color_by, sorted(df_ae[color_by].dropna().unique()))
+            
             if latent_dim >= 3:
                 fig_ae = px.scatter_3d(
                     df_ae.head(5000), x='Z_1', y='Z_2', z='Z_3',
                     color=color_by,
-                    hover_data=['animal_id', 'group', 'cell_type'],
+                    color_discrete_map=color_map,
+                    hover_data=hover_cols,
                     title=f"Espacio Latente 3D (Autoencoder PyTorch) — N_células={len(df_ae):,}",
-                    opacity=0.7,
+                    opacity=0.75,
                     template='plotly_dark'
                 )
-                fig_ae.update_traces(marker=dict(size=3))
+                fig_ae.update_traces(marker=dict(size=3.5))
                 fig_ae.update_layout(height=650)
                 st.plotly_chart(fig_ae, use_container_width=True)
             else:
                 fig_ae = px.scatter(
                     df_ae.head(10000), x='Z_1', y='Z_2',
                     color=color_by,
-                    hover_data=['animal_id', 'group', 'cell_type'],
+                    color_discrete_map=color_map,
+                    hover_data=hover_cols,
                     title=f"Espacio Latente 2D (Autoencoder PyTorch) — N_células={len(df_ae):,}",
-                    opacity=0.7,
+                    opacity=0.75,
                     template='plotly_dark'
                 )
                 fig_ae.update_layout(height=550)
                 st.plotly_chart(fig_ae, use_container_width=True)
 
         st.divider()
-        st.subheader("📋 Perfil de Fenotipos Celulares (Promedio por Cluster)")
+        st.subheader("📋 Perfil de Fenotipos Celulares (Promedio de Biomarcadores por Cluster)")
         cluster_profile = df_ae.groupby('Cluster')[avail_features].mean().reset_index()
         st.dataframe(cluster_profile, use_container_width=True)
 
@@ -426,7 +612,7 @@ with tab_lmm:
     st.header("📉 Modelos Mixtos Lineales (LMM / LME)")
     st.markdown("""
     **Ventaja del Modelo Mixto Lineal:**
-    A diferencia de promediar las células por sujeto (lo que descarta la variabilidad intrínseca) o de tratar todas las células como independientes (lo que pseudoreplica y genera p-valores falsamente bajos), los **LMM** evalúan **las 160.000+ células individualmente** incluyendo un **efecto aleatorio por sujeto ($1 | \text{animal\_id}$)**.
+    A diferencia de promediar las células por sujeto (lo que descarta la variabilidad intrínseca) o de tratar todas las células como independientes (lo que pseudoreplica y genera p-valores falsamente bajos), los **LMM** evalúan **las células individualmente** incluyendo un **efecto aleatorio por sujeto ($1 | \text{animal\_id}$)**.
     """)
 
     LMM_VARS = {
@@ -467,7 +653,6 @@ with tab_lmm:
         df_lmm_full['condition'] = pd.Categorical(df_lmm_full['condition'], categories=COND_ORDER, ordered=True)
         df_lmm_full = df_lmm_full.dropna().reset_index(drop=True)
 
-        # Optimize sample size for instant REML convergence if dataset > 30,000 cells
         if len(df_lmm_full) > 30000:
             df_lmm = df_lmm_full.sample(n=30000, random_state=42).reset_index(drop=True)
             st.info(f"⚡ **Optimización Muestral Activa:** Se seleccionó un submuestreo representativo de **30.000 células** (de {len(df_lmm_full):,}) para un ajuste REML instantáneo e hiperpreciso del Modelo Mixto.")
@@ -482,7 +667,6 @@ with tab_lmm:
                 model_lmm = smf.mixedlm(formula_str, df_lmm, groups="animal_id")
                 result_lmm = model_lmm.fit(reml=True)
             except Exception as e_primary:
-                # Robust Fallback Ladder
                 st.warning(f"⚠️ La fórmula de interacción seleccionada generó una matriz singular o colineal ({e_primary}). Probando estructura alternativa...")
                 fallback_formulas = [
                     LMM_FORMULAS["Condición * Hemisferio"].format(y=sel_lmm_var),
@@ -501,7 +685,6 @@ with tab_lmm:
             if result_lmm is not None:
                 st.success(f"✅ Modelo Mixto Lineal ajustado correctamente con optimización REML. (Fórmula: `{formula_str}`)")
 
-                # Fixed Effects Table
                 fe_summary = pd.DataFrame({
                     "Coeficiente (β)": result_lmm.params,
                     "Error Estándar": result_lmm.bse,
@@ -539,7 +722,6 @@ with tab_lmm:
                         f"* **$N$ grupos (animales):** `{df_lmm['animal_id'].nunique()}`"
                     )
 
-                # Plot Marginal Means
                 st.divider()
                 st.subheader("📈 Promedios Marginales Estimados (Efectos Fijos LMM)")
                 marginal_means = df_lmm.groupby(['condition', 'section', 'sex'])[sel_lmm_var].agg(['mean', 'std', 'count']).reset_index()
@@ -558,9 +740,9 @@ with tab_lmm:
 
 # ─── TAB 3: FENOTIPOS & PROPORCIONES POR GRUPO ───
 with tab_clusters:
-    st.header("📊 Distribución de Fenotipos por Condición y Hemisferio")
+    st.header("📊 Distribución, Proporciones y Validación Estadística de Fenotipos")
     st.markdown("""
-    Evalúa la reorganización de subpoblaciones celulares a lo largo del tiempo (`NONE` $\\rightarrow$ `3 DÍAS` $\\rightarrow$ `14 DÍAS`) para determinar si la neuroplasticidad altera las proporciones relativas de cada fenotipo.
+    Evalúa de forma interactiva la reorganización de subpoblaciones celulares a través de las condiciones experimentales (`NONE`, `3 DÍAS`, `7 DÍAS`, `14 DÍAS`), hemisferios (`IPSI` vs `CONTRA`) y sexos (`MACHO` vs `HEMBRA`).
     """)
 
     if len(active_cells_df) >= 10:
@@ -568,32 +750,106 @@ with tab_clusters:
             active_cells_df, avail_features, latent_dim, epochs, n_clusters
         )
         df_prop = active_cells_df.copy()
-        df_prop['Cluster'] = [f"Fenotipo {c+1}" for c in cluster_labels]
+        df_prop['Cluster_ID'] = cluster_labels
+        descriptive_map = get_descriptive_cluster_names(df_prop, 'Cluster_ID', cond_col='cond_sec')
+        df_prop['Cluster_Descriptivo'] = df_prop['Cluster_ID'].map(descriptive_map)
+        df_prop['Cluster_Simple'] = [f"Cluster {c+1}" for c in cluster_labels]
+        df_prop['Cluster'] = df_prop['Cluster_Descriptivo'] if "Descriptiva" in st.session_state.get('ae_cluster_naming', 'Descriptiva') else df_prop['Cluster_Simple']
 
-        ct = pd.crosstab(index=df_prop['condition'], columns=df_prop['Cluster'], normalize='index') * 100
+        col_ctl1, col_ctl2 = st.columns(2)
+        with col_ctl1:
+            x_group_by = st.selectbox(
+                "Agrupar Eje X por:",
+                ["condition", "cond_sec", "sex_cond", "section", "sex", "group"],
+                format_func=lambda x: {
+                    "condition": "Condición Experimental (NONE, 3d, 7d, 14d)",
+                    "cond_sec": "Condición × Hemisferio (ej. 3d IPSI vs 3d CONTRA)",
+                    "sex_cond": "Sexo × Condición (ej. Macho 3d vs Hembra 3d)",
+                    "section": "Hemisferio (IPSI vs CONTRA)",
+                    "sex": "Sexo (MACHO vs HEMBRA)",
+                    "group": "Grupo Experimental Completo"
+                }.get(x, x),
+                key="prop_x_group"
+            )
+        with col_ctl2:
+            subpop_by = st.selectbox(
+                "Subpoblación / Barras:",
+                ["Cluster", "cell_type", "roi_region"],
+                format_func=lambda x: {
+                    "Cluster": "Clusters IA del Autoencoder",
+                    "cell_type": "Tipo Celular (PV+/PNN+, PV-/PNN+, etc.)",
+                    "roi_region": "Región ROI (A, B, C)"
+                }.get(x, x),
+                key="prop_subpop"
+            )
+
+        subpop_map = get_color_discrete_map(subpop_by, sorted(df_prop[subpop_by].dropna().unique()))
+        ct = pd.crosstab(index=df_prop[x_group_by], columns=df_prop[subpop_by], normalize='index') * 100
+        ct_raw = pd.crosstab(index=df_prop[x_group_by], columns=df_prop[subpop_by])
 
         col_p1, col_p2 = st.columns([2, 1])
 
         with col_p1:
             fig_prop = px.bar(
                 ct, x=ct.index, y=ct.columns,
-                title="Proporción de Fenotipos Celulares (%) por Condición Experimental",
-                labels={'value': 'Porcentaje (%)', 'condition': 'Condición'},
+                title=f"Proporción (%) de {format_dict.get(subpop_by, subpop_by)} por {x_group_by}",
+                labels={'value': 'Porcentaje (%)', x_group_by: 'Grupo'},
+                color_discrete_map=subpop_map,
                 template='plotly_dark'
             )
-            fig_prop.update_layout(height=450)
+            fig_prop.update_layout(height=480, barmode='stack')
             st.plotly_chart(fig_prop, use_container_width=True)
 
         with col_p2:
-            st.markdown('<div class="table-caption">🧪 Prueba de Chi-Cuadrada (Independencia)</div>', unsafe_allow_html=True)
-            ct_raw = pd.crosstab(index=df_prop['condition'], columns=df_prop['Cluster'])
-            chi2, p_val, dof, _ = chi2_contingency(ct_raw)
+            st.markdown('<div class="table-caption">🧪 Métricas y Tests de Asociación Estadística</div>', unsafe_allow_html=True)
+            if ct_raw.shape[0] > 1 and ct_raw.shape[1] > 1:
+                chi2, p_val, dof, _ = chi2_contingency(ct_raw)
+                v_cramer = compute_cramers_v(ct_raw)
+                
+                try:
+                    nmi_score = normalized_mutual_info_score(df_prop[x_group_by].astype(str), df_prop[subpop_by].astype(str))
+                    homog_score = homogeneity_score(df_prop[x_group_by].astype(str), df_prop[subpop_by].astype(str))
+                except Exception:
+                    nmi_score, homog_score = np.nan, np.nan
+                
+                v_interp = "Fuerte (Asociación marcada)" if v_cramer >= 0.30 else ("Moderada" if v_cramer >= 0.10 else "Débil")
+                
+                st.markdown(f"""
+                * **Chi-Cuadrada ($\chi^2$):** `{chi2:.2f}` (gl: `{dof}`, $p = {p_val:.4e}$)
+                * **$V$ de Cramér (Fuerza de Efecto):** `{v_cramer:.4f}` $\rightarrow$ **{v_interp}**
+                * **NMI (Información Mutua Normalizada):** `{nmi_score:.4f}`
+                * **Homogeneidad de Partición:** `{homog_score:.4f}`
+                * **Conclusión:** {"✅ Asociación altamente significativa entre grupos y fenotipos ($p < 0.05$)" if p_val < 0.05 else "ns (Sin asociación estadísticamente significativa)"}
+                """)
+            else:
+                st.info("Se requiere más de 1 categoría en ambos ejes para calcular $\chi^2$ y $V$ de Cramér.")
 
-            st.markdown(f"""
-            * **Estadístico $\chi^2$:** `{chi2:.2f}`
-            * **Grados de Libertad:** `{dof}`
-            * **p-valor:** `{p_val:.4e}`
-            * **Resultado:** {"✅ Cambio significativo en proporciones fenotípicas" if p_val < 0.05 else "ns (Sin cambio significativo)"}
-            """)
-
+            st.markdown('<div class="table-caption">📊 Conteo Absoluto de Células ($N$)</div>', unsafe_allow_html=True)
             st.dataframe(ct_raw, use_container_width=True)
+
+        # ─── HEATMAP DE RESIDUOS ESTANDARIZADOS (ENRIQUECIMIENTO) ───
+        if ct_raw.shape[0] > 1 and ct_raw.shape[1] > 1:
+            st.divider()
+            st.subheader("🔥 Mapa de Calor de Enriquecimiento / Depleción Fenotípica (Residuos Ajustados Z)")
+            st.markdown("""
+            Los **Residuos Estandarizados Ajustados ($Z$)** cuantifican con precisión qué combinaciones de Grupo $\\times$ Fenotipo están **significativamente alteradas**:
+            * 🟥 **$Z > +1.96$ ($p < 0.05$):** Fenotipo **significativamente enriquecido / sobrerrepresentado**.
+            * 🟦 **$Z < -1.96$ ($p < 0.05$):** Fenotipo **significativamente depletado / disminuido**.
+            * ⬜ **$-1.96 \\le Z \\le +1.96$:** Frecuencia esperada por azar (neutral).
+            """)
+            
+            res_df = compute_standardized_residuals(ct_raw)
+            max_abs_z = float(max(4.0, np.nanmax(np.abs(res_df.values))))
+            fig_hm = px.imshow(
+                res_df,
+                text_auto=".2f",
+                color_continuous_scale="balance",
+                zmin=-max_abs_z,
+                zmax=max_abs_z,
+                title=f"Enriquecimiento Fenotípico (Z-Scores de Haberman): {x_group_by} vs {subpop_by}",
+                labels=dict(x=subpop_by, y=x_group_by, color="Z-score"),
+                template='plotly_dark'
+            )
+            fig_hm.update_layout(height=450)
+            st.plotly_chart(fig_hm, use_container_width=True)
+

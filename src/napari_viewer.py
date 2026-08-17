@@ -47,9 +47,9 @@ def main():
     if os.path.exists(raw_path):
         try:
             (pv_raw, wfa_raw, dapi_raw, agr_raw) = load_channels_tif(raw_path)
-            viewer.add_image(dapi_raw, name="01 - DAPI (Núcleos)", colormap="blue", scale=scale, blending="additive", visible=True)
+            viewer.add_image(dapi_raw, name="01 - DAPI (Núcleos)", colormap="blue", scale=scale, blending="additive", visible=False)
             viewer.add_image(wfa_raw, name="02 - WFA (Red Perineuronal)", colormap="red", scale=scale, blending="additive", visible=True)
-            viewer.add_image(pv_raw, name="03 - PV (Parvalbúmina)", colormap="green", scale=scale, blending="additive", visible=True)
+            viewer.add_image(pv_raw, name="03 - PV (Parvalbúmina)", colormap="green", scale=scale, blending="additive", visible=False)
         except Exception as e:
             print(f"Advertencia al cargar canales biológicos: {e}")
 
@@ -63,7 +63,7 @@ def main():
             heatmap_bgr = cv2.imread(heatmap_png_path)
             if heatmap_bgr is not None:
                 heatmap_rgb = cv2.cvtColor(heatmap_bgr, cv2.COLOR_BGR2RGB)
-                viewer.add_image(heatmap_rgb, name="🔥 Mapa de Calor de Potencia (Lupori Energy)", scale=scale, opacity=0.65, visible=True)
+                viewer.add_image(heatmap_rgb, name="🔥 Mapa de Calor de Potencia (Lupori Energy)", scale=scale, opacity=0.65, visible=False)
         except Exception as e:
             print(f"Advertencia al cargar Mapa de Calor de Potencia: {e}")
 
@@ -85,13 +85,13 @@ def main():
             if len(stk_masks.shape) >= 3 and stk_masks.shape[0] >= 3:
                 m_wfa = stk_masks[2]
                 if np.max(m_wfa) > 0:
-                    viewer.add_labels(m_wfa, name="🧠 PNNs Totales (IA Detectadas)", scale=scale, opacity=0.5, visible=True)
+                    viewer.add_labels(m_wfa, name="🧠 PNNs Totales (IA Detectadas)", scale=scale, opacity=0.5, visible=False)
             
             # Channel 3: Pericellular Ring Mask (4µm)
             if len(stk_masks.shape) >= 3 and stk_masks.shape[0] >= 4:
                 m_ring = stk_masks[3]
                 if np.max(m_ring) > 0:
-                    viewer.add_labels(m_ring, name="⭕ Anillos Pericelulares 4µm (Muestreo Potencia)", scale=scale, opacity=0.6, visible=True)
+                    viewer.add_labels(m_ring, name="⭕ Anillos Pericelulares 4µm (Muestreo Potencia)", scale=scale, opacity=0.6, visible=False)
 
             # ─── CLASIFICACIÓN PNN PV+ VS PNN PV- (MÉTRICAS CSV) ───
             metrics_dir = segmented_dir.replace("data/processed/segmented", "data/processed/metrics")
@@ -110,7 +110,7 @@ def main():
                     for lbl in coloc_labels:
                         m_pnn_coloc[m_wfa == lbl] = lbl
                     if np.max(m_pnn_coloc) > 0:
-                        viewer.add_labels(m_pnn_coloc, name="🟢 PNNs PV+ (Coinmunomarcadas PV+/PNN+)", scale=scale, opacity=0.65, visible=True)
+                        viewer.add_labels(m_pnn_coloc, name="🟢 PNNs PV+ (Coinmunomarcadas PV+/PNN+)", scale=scale, opacity=0.65, visible=False)
 
                     # Create red mask for PV-/PNN+
                     hollow_labels = set(df_hollow['label'].astype(int))
@@ -118,16 +118,16 @@ def main():
                     for lbl in hollow_labels:
                         m_pnn_hollow[m_wfa == lbl] = lbl
                     if np.max(m_pnn_hollow) > 0:
-                        viewer.add_labels(m_pnn_hollow, name="🔴 PNNs PV- (Huecas PV-/PNN+)", scale=scale, opacity=0.65, visible=True)
+                        viewer.add_labels(m_pnn_hollow, name="🔴 PNNs PV- (Huecas PV-/PNN+)", scale=scale, opacity=0.65, visible=False)
 
                     # Add Centroid Points
                     if not df_coloc.empty:
                         pts_coloc = df_coloc[['centroid_y', 'centroid_x']].values
-                        viewer.add_points(pts_coloc, name="📍 Centroides PNN (PV+/PNN+)", face_color="lime", edge_color="white", size=14, scale=scale)
+                        viewer.add_points(pts_coloc, name="📍 Centroides PNN (PV+/PNN+)", face_color="lime", edge_color="white", size=14, scale=scale, visible=False)
 
                     if not df_hollow.empty:
                         pts_hollow = df_hollow[['centroid_y', 'centroid_x']].values
-                        viewer.add_points(pts_hollow, name="📍 Centroides PNN (PV-/PNN+)", face_color="magenta", edge_color="white", size=14, scale=scale)
+                        viewer.add_points(pts_hollow, name="📍 Centroides PNN (PV-/PNN+)", face_color="magenta", edge_color="white", size=14, scale=scale, visible=False)
 
                 except Exception as e_csv:
                     print(f"Advertencia al clasificar PNNs desde CSV: {e_csv}")

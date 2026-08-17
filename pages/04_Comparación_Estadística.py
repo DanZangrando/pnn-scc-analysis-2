@@ -88,8 +88,10 @@ def parse_group(name):
         cond, order = 'NONE', 0
     elif '3' in name_norm and 'DIA' in name_norm:
         cond, order = '3 DÍAS', 1
+    elif '7' in name_norm and 'DIA' in name_norm:
+        cond, order = '7 DÍAS', 2
     elif '14' in name_norm and 'DIA' in name_norm:
-        cond, order = '14 DÍAS', 2
+        cond, order = '14 DÍAS', 3
     else:
         cond, order = name, 99
 
@@ -118,8 +120,8 @@ def run_mwu(a, b):
     except Exception:
         return np.nan, np.nan
 
-COND_ORDER  = ['NONE', '3 DÍAS', '14 DÍAS']
-COND_COLORS = {'NONE': '#4facfe', '3 DÍAS': '#bb86fc', '14 DÍAS': '#00ffcc'}
+COND_ORDER  = ['NONE', '3 DÍAS', '7 DÍAS', '14 DÍAS']
+COND_COLORS = {'NONE': '#4facfe', '3 DÍAS': '#bb86fc', '7 DÍAS': '#f59e0b', '14 DÍAS': '#00ffcc'}
 SEX_COLORS  = {'MACHO': '#5bc0de', 'HEMBRA': '#e83e8c'}
 
 def _ensure_roi_annotations(df):
