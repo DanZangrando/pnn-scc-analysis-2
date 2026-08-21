@@ -868,6 +868,14 @@ with tab_stats:
                 line=dict(color="rgba(255, 255, 255, 0.5)", dash="dash")
             ))
             st.plotly_chart(fig_scat)
+            cols_scat = [c for c in ["filename", "condition", "sex", "section", "manual_count", "auto_count"] if c in df_v.columns]
+            st.download_button(
+                "📥 Descargar Datos Gráfica (Manual vs IA) (.csv)",
+                data=df_v[cols_scat].to_csv(index=False).encode('utf-8'),
+                file_name="validacion_manual_vs_ia_dispersion.csv",
+                mime="text/csv",
+                key="dl_val_scatter_csv"
+            )
 
         with col_plot2:
             st.markdown("#### 📉 Gráfico de Bland-Altman (Sesgo vs Promedio)")
@@ -896,6 +904,17 @@ with tab_stats:
                 template="plotly_dark"
             )
             st.plotly_chart(fig_ba)
+
+            df_ba = df_v[[c for c in ["filename", "condition", "sex", "section"] if c in df_v.columns]].copy()
+            df_ba["mean_count"] = means
+            df_ba["diff_manual_minus_ia"] = diffs
+            st.download_button(
+                "📥 Descargar Datos Gráfica Bland-Altman (.csv)",
+                data=df_ba.to_csv(index=False).encode('utf-8'),
+                file_name="validacion_bland_altman.csv",
+                mime="text/csv",
+                key="dl_val_ba_csv"
+            )
 
         # Conclusion Text Box
         st.markdown("---")

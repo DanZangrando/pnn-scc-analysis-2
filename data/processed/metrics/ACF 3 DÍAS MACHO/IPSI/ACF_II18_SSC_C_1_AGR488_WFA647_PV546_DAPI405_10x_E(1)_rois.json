@@ -1,0 +1,33 @@
+{
+  "updated_at": "2026-08-21 10:37:18",
+  "pixel_size_um": 0.8913,
+  "image_shape": [
+    1945,
+    2867
+  ],
+  "n_rois_total": 0,
+  "total_roi_area_um2": 0.0,
+  "total_roi_area_mm2": 0.0,
+  "regions": {
+    "A": [],
+    "B": [],
+    "C": []
+  },
+  "regions_metadata": {
+    "A": {
+      "n_rois": 0,
+      "area_um2": 0.0,
+      "area_mm2": 0.0
+    },
+    "B": {
+      "n_rois": 0,
+      "area_um2": 0.0,
+      "area_mm2": 0.0
+    },
+    "C": {
+      "n_rois": 0,
+      "area_um2": 0.0,
+      "area_mm2": 0.0
+    }
+  }
+}

@@ -34,7 +34,7 @@
     "wfa_cellpose_flow_threshold": 0.7,
     "wfa_cellpose_cellprob_threshold": 0.0,
     "lupori_loc_threshold": 0.05,
-    "lupori_score_threshold": 0.05,
+    "lupori_score_threshold": -2.0,
     "lupori_tile_size": 640,
     "lupori_tile_overlap": 64,
     "tile_grid_n": 2,
@@ -48,6 +48,6 @@
     "tile_mosaic_size": 110,
     "soma_erosion_um": 2.0,
     "lupori_min_peak_dist": 10,
-    "wfa_norm_method": "Percentil Robusto (1-99.5%)",
+    "wfa_norm_method": "Ninguno (Raw)",
     "wfa_gamma": 1.0
 }

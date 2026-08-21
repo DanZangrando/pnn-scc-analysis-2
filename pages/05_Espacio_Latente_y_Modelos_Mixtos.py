@@ -602,10 +602,25 @@ with tab_ae:
                 fig_ae.update_layout(height=550)
                 st.plotly_chart(fig_ae, use_container_width=True)
 
+            st.download_button(
+                "📥 Descargar Datos del Espacio Latente (.csv)",
+                data=df_ae.to_csv(index=False).encode('utf-8'),
+                file_name="espacio_latente_autoencoder.csv",
+                mime="text/csv",
+                key="dl_ae_csv"
+            )
+
         st.divider()
         st.subheader("📋 Perfil de Fenotipos Celulares (Promedio de Biomarcadores por Cluster)")
         cluster_profile = df_ae.groupby('Cluster')[avail_features].mean().reset_index()
         st.dataframe(cluster_profile, use_container_width=True)
+        st.download_button(
+            "📥 Descargar Perfil de Biomarcadores por Cluster (.csv)",
+            data=cluster_profile.to_csv(index=False).encode('utf-8'),
+            file_name="perfil_biomarcadores_clusters.csv",
+            mime="text/csv",
+            key="dl_cluster_profile_csv"
+        )
 
 # ─── TAB 2: MODELOS MIXTOS LINEALES (LMM / LME) ───
 with tab_lmm:
@@ -735,6 +750,13 @@ with tab_lmm:
                 )
                 fig_lmm.update_layout(height=450)
                 st.plotly_chart(fig_lmm, use_container_width=True)
+                st.download_button(
+                    "📥 Descargar Estimaciones Marginales LMM (.csv)",
+                    data=marginal_means.to_csv(index=False).encode('utf-8'),
+                    file_name=f"lmm_estimaciones_marginales_{sel_lmm_var}.csv",
+                    mime="text/csv",
+                    key="dl_lmm_means_csv"
+                )
             else:
                 st.error("No se pudo ajustar el Modelo Mixto Lineal con las fórmulas disponibles. Verifique los datos.")
 
@@ -799,6 +821,13 @@ with tab_clusters:
             )
             fig_prop.update_layout(height=480, barmode='stack')
             st.plotly_chart(fig_prop, use_container_width=True)
+            st.download_button(
+                "📥 Descargar Proporciones de la Gráfica (%) (.csv)",
+                data=ct.reset_index().to_csv(index=False).encode('utf-8'),
+                file_name=f"proporciones_{x_group_by}_{subpop_by}.csv",
+                mime="text/csv",
+                key="dl_prop_csv"
+            )
 
         with col_p2:
             st.markdown('<div class="table-caption">🧪 Métricas y Tests de Asociación Estadística</div>', unsafe_allow_html=True)
@@ -852,4 +881,11 @@ with tab_clusters:
             )
             fig_hm.update_layout(height=450)
             st.plotly_chart(fig_hm, use_container_width=True)
+            st.download_button(
+                "📥 Descargar Matriz Z-Scores de Residuos (.csv)",
+                data=res_df.reset_index().to_csv(index=False).encode('utf-8'),
+                file_name=f"residuos_z_{x_group_by}_{subpop_by}.csv",
+                mime="text/csv",
+                key="dl_hm_csv"
+            )
 

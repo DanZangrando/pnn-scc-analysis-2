@@ -379,12 +379,42 @@ for _, img_row in valid_images_df.iterrows():
     fn = img_row['image_name']
     aid = img_row['animal_id']
     cnum = img_row['corte_num']
+    base_name = img_row.get('base_name', os.path.splitext(fn)[0])
+    
+    px_size = 0.8913
+    area_mm2 = float((2048 * px_size * 2048 * px_size) / 1e6)
+    roi_json_path = os.path.join(METRICS_BASE_DIR, g, s, f"{base_name}_rois.json")
+    if not os.path.exists(roi_json_path):
+        roi_json_path = get_roi_json_path(METRICS_BASE_DIR, fn)
+
+    if area_scope != "🌐 Toda la Imagen (Global)" and os.path.exists(roi_json_path):
+        d_roi = load_rois(roi_json_path)
+        target_regs = ['A', 'B', 'C'] if 'combinadas' in area_scope else ([area_scope.split(' ')[-1]] if 'Región' in area_scope else ['A', 'B', 'C'])
+        total_um2 = 0.0
+        for r_k in target_regs:
+            pts_list = d_roi.get(r_k, [])
+            for poly in pts_list:
+                pts = np.array(poly)
+                if len(pts) >= 3:
+                    x, y = pts[:, 1], pts[:, 0]
+                    a_px = 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
+                    total_um2 += a_px * (px_size ** 2)
+        if total_um2 > 0:
+            area_mm2 = total_um2 / 1e6
     
     cells_in_img = active_cells_df[active_cells_df['image_name'] == fn] if not active_cells_df.empty else pd.DataFrame()
     base = {
-        'group': g, 'section': s, 'image_name': fn, 'animal_id': aid, 'corte_num': cnum
+        'group': g, 'section': s, 'image_name': fn, 'animal_id': aid, 'corte_num': cnum,
+        'image_area_mm2': area_mm2
     }
-    base.update(_img_summary_for_cells(cells_in_img))
+    cell_stats = _img_summary_for_cells(cells_in_img)
+    base.update(cell_stats)
+    
+    base['pnn_density_mm2'] = float(base['pnn_count'] / area_mm2) if area_mm2 > 0 else 0.0
+    base['pnn_filled_density_mm2'] = float(base['pnn_count_filled'] / area_mm2) if area_mm2 > 0 else 0.0
+    base['pnn_hollow_density_mm2'] = float(base['pnn_count_hollow'] / area_mm2) if area_mm2 > 0 else 0.0
+    base['pv_density_mm2'] = float(base['pv_count'] / area_mm2) if area_mm2 > 0 else 0.0
+    
     img_summaries.append(base)
 
 df_img = pd.DataFrame(img_summaries) if img_summaries else pd.DataFrame()
@@ -433,15 +463,21 @@ def get_dynamic_labels(level):
     suffix = "por sujeto" if level == "Por Sujeto (animal, promediando cortes)" else "por preparado" if level == "Por Preparado/Corte (imagen)" else "por célula"
     
     pv_vars = {
+        "pv_density_mm2": f"Densidad de Interneuronas PV+ (células/mm²) {suffix}",
+        "pv_count": f"N° de Interneuronas PV+ Totales {suffix}",
         "mean_pv_area_um2": "Área Promedio Soma PV+ (µm²)",
         "mean_pv_diameter_um": "Diámetro Promedio Soma PV+ (µm)",
         "pv_area_um2": "Área del Soma PV+ (µm²) — por Célula",
-        "pv_diameter_um": "Diámetro del Soma PV+ (µm) — por Célula"
+        "pv_diameter_um": "Diámetro del Soma PV+ (µm) — por Célula",
+        "image_area_mm2": f"Área de Cuantificación (mm²) {suffix}"
     }
     
     pnn_vars = {
+        "pnn_density_mm2": f"Densidad de Redes PNN+ (PNNs/mm²) {suffix}",
         "pnn_count": f"N° de Redes PNN+ Totales {suffix}",
+        "pnn_filled_density_mm2": f"Densidad PNN+ Ocupadas (PV+/PNN+) por mm² {suffix}",
         "pnn_count_filled": f"N° de PNN+ Ocupadas (PV+/PNN+) {suffix}",
+        "pnn_hollow_density_mm2": f"Densidad PNN+ Huecas (PNN+/PV-) por mm² {suffix}",
         "pnn_count_hollow": f"N° de PNN+ Huecas (PNN+/PV-) {suffix}",
         "pct_pnn_plus": "% de PV+ con Red PNN (Coexpresión)",
         "pct_pnn_hollow": "% de PNN+ que son Huecas",
@@ -450,7 +486,8 @@ def get_dynamic_labels(level):
         "mean_score": "Confianza Promedio (PNNscore)",
         "pnn_area_um2": "Área de PNN (µm²) — por Célula",
         "pnn_diameter_um": "Diámetro de PNN (µm) — por Célula",
-        "score": "Confianza PNNscore (IA) — por Célula"
+        "score": "Confianza PNNscore (IA) — por Célula",
+        "image_area_mm2": f"Área de Cuantificación (mm²) {suffix}"
     }
     return pv_vars, pnn_vars
 
@@ -617,6 +654,25 @@ def run_stats_layout(df_base, var_options, selected_var_key, title_lbl):
             fig_3w.update_traces(line=dict(width=2.5), marker=dict(size=8))
             fig_3w.update_layout(height=480)
             st.plotly_chart(fig_3w, use_container_width=True)
+            
+            c_d1, c_d2 = st.columns(2)
+            with c_d1:
+                st.download_button(
+                    "📥 Descargar Medias Estimadas (Gráfica 3-Vías) (.csv)",
+                    data=marginal_stats.to_csv(index=False).encode('utf-8'),
+                    file_name=f"grafica_anova_3vias_medias_{selected_var_key}.csv",
+                    mime="text/csv",
+                    key=f"dl_3w_stats_{selected_var_key}_{title_lbl}".replace(" ", "_")
+                )
+            with c_d2:
+                cols_3w = [c for c in ['animal_id', 'condition', 'sex', 'section', selected_var_key] if c in df_3way.columns]
+                st.download_button(
+                    "📥 Descargar Datos Brutos (Gráfica 3-Vías) (.csv)",
+                    data=df_3way[cols_3w].to_csv(index=False).encode('utf-8'),
+                    file_name=f"grafica_anova_3vias_datos_brutos_{selected_var_key}.csv",
+                    mime="text/csv",
+                    key=f"dl_3w_raw_{selected_var_key}_{title_lbl}".replace(" ", "_")
+                )
             
         except Exception as e_aov:
             st.error(f"No se pudo ajustar el modelo ANOVA de 3 Vías: {e_aov}")
@@ -830,6 +886,26 @@ def run_stats_layout(df_base, var_options, selected_var_key, title_lbl):
         )
 
         st.plotly_chart(fig_anova, use_container_width=True)
+
+        c_d1, c_d2 = st.columns(2)
+        with c_d1:
+            cols_export_1w = [c for c in ['animal_id', 'condition', 'sex', 'section', selected_var_key] if c in df_filtered.columns]
+            st.download_button(
+                "📥 Descargar Datos de la Gráfica (.csv)",
+                data=df_filtered[cols_export_1w].to_csv(index=False).encode('utf-8'),
+                file_name=f"grafica_anova_1via_{selected_var_key}_{filter_sex}_{filter_sec}.csv".replace(" ", "_"),
+                mime="text/csv",
+                key=f"dl_1w_data_{selected_var_key}_{title_lbl}_{filter_sex}_{filter_sec}".replace(" ", "_")
+            )
+        with c_d2:
+            if tukey_table:
+                st.download_button(
+                    "📥 Descargar Resultados Post-Hoc Tukey (.csv)",
+                    data=pd.DataFrame(tukey_table).to_csv(index=False).encode('utf-8'),
+                    file_name=f"posthoc_tukey_{selected_var_key}_{filter_sex}_{filter_sec}.csv".replace(" ", "_"),
+                    mime="text/csv",
+                    key=f"dl_1w_tukey_{selected_var_key}_{title_lbl}".replace(" ", "_")
+                )
 
         col_t1, col_t2 = st.columns(2)
         with col_t1:
@@ -1046,6 +1122,15 @@ def run_stats_layout(df_base, var_options, selected_var_key, title_lbl):
 
             with cols[col_idx]:
                 st.plotly_chart(fig, use_container_width=True)
+
+                cols_export_sub = [c for c in ['animal_id', 'condition', 'sex', 'section', selected_var_key] if c in df_sub.columns]
+                st.download_button(
+                    f"📥 Descargar Datos de la Gráfica ({group_title}) (.csv)",
+                    data=df_sub[cols_export_sub].to_csv(index=False).encode('utf-8'),
+                    file_name=f"grafica_{group_title.lower()}_{selected_var_key}.csv".replace(" ", "_"),
+                    mime="text/csv",
+                    key=f"dl_classic_{group_title}_{selected_var_key}_{title_lbl}".replace(" ", "_")
+                )
 
                 st.markdown(f'<div class="table-caption">📋 Tabla 1: Comparación Intragrupo ({group_title} — IPSI vs CONTRA)</div>', unsafe_allow_html=True)
                 if table_intra:
