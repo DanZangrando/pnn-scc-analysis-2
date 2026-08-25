@@ -21,6 +21,71 @@ from datasets.patched_datasets import PatchedMultiImageDataset
 from methods.detection.train_fn import predict_points
 from methods.detection.transforms import ToTensor
 
+def preprocess_pv_for_segmentation(pv_raw, method="Ninguno (Raw)", clahe_clip=0.02, gamma=1.0, p_low=1.0, p_high=99.5):
+    img = pv_raw.astype(np.float32)
+    min_v, max_v = float(img.min()), float(img.max())
+    if max_v > min_v:
+        img_norm = (img - min_v) / (max_v - min_v)
+    else:
+        return pv_raw
+
+    if "CLAHE" in method:
+        img_norm = exposure.equalize_adapthist(img_norm, clip_limit=clahe_clip).astype(np.float32)
+    elif "Percentil" in method:
+        pl = float(np.percentile(img_norm, p_low))
+        ph = float(np.percentile(img_norm, p_high))
+        if ph > pl:
+            img_norm = np.clip((img_norm - pl) / (ph - pl), 0.0, 1.0)
+    elif "Top-hat" in method or "Sustracción" in method:
+        from skimage.morphology import white_tophat, disk
+        img_u8 = (img_norm * 255).astype(np.uint8)
+        img_top = white_tophat(img_u8, disk(15))
+        img_norm = img_top.astype(np.float32) / 255.0
+    elif "Gaussiano" in method:
+        from skimage.filters import gaussian
+        img_norm = gaussian(img_norm, sigma=0.8).astype(np.float32)
+    elif "Otsu" in method:
+        t = threshold_otsu(img_norm)
+        img_norm[img_norm < t] = 0
+
+    if gamma != 1.0 and gamma > 0:
+        img_norm = np.power(img_norm, gamma)
+
+    if pv_raw.dtype == np.uint8 or max_v <= 255:
+        return (img_norm * 255.0).astype(np.uint8)
+    else:
+        return (img_norm * 65535.0).astype(np.uint16)
+
+def filter_points_by_min_distance(coords, scores, min_dist_px):
+    """
+    Suprime detecciones candidatas que estén a una distancia menor a min_dist_px
+    de otra detección con mayor puntaje (Non-Maximum Suppression espacial).
+    """
+    if len(coords) <= 1 or min_dist_px <= 0:
+        return coords, scores
+
+    scores_arr = np.array(scores)
+    sorted_indices = np.argsort(scores_arr)[::-1]
+    kept_coords = []
+    kept_scores = []
+
+    for idx in sorted_indices:
+        pt = coords[idx]
+        sc = scores[idx]
+        
+        is_too_close = False
+        for k_pt in kept_coords:
+            dist = np.hypot(pt[0] - k_pt[0], pt[1] - k_pt[1])
+            if dist < min_dist_px:
+                is_too_close = True
+                break
+        
+        if not is_too_close:
+            kept_coords.append(pt)
+            kept_scores.append(sc)
+
+    return kept_coords, kept_scores
+
 def normalize_wfa_for_detection(w_raw, method="Ninguno (Raw)", gamma=1.0):
     w_f = w_raw.astype(np.float32)
     
@@ -89,15 +154,21 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
     # 1. PV Segmentation (Cellpose)
     m_pv = np.zeros_like(m_dapi)
     if do_pv_segmentation and model_pv_obj is not None:
-        in_pv = p_raw.copy()
-        if pv_filter_type == "Otsu Global":
-            t = threshold_otsu(in_pv)
-            in_pv[in_pv < t] = 0
-        elif pv_filter_type == "CLAHE (Adaptativo Local)":
-            clahe = exposure.equalize_adapthist(in_pv, clip_limit=0.03)
-            in_pv = (clahe * 65535).astype(np.uint16)
-        m_pv, _, _ = model_pv_obj.eval(in_pv, diameter=pv_diameter, 
-                                        flow_threshold=pv_flow_threshold, cellprob_threshold=pv_cellprob_threshold)
+        pv_clahe_clip = float(calib_data.get('pv_clahe_clip', 0.02))
+        pv_gamma = float(calib_data.get('pv_gamma', 1.0))
+        pv_min_size = int(calib_data.get('pv_cellpose_min_size', 15))
+        pv_resample = bool(calib_data.get('pv_cellpose_resample', True))
+        
+        in_pv = preprocess_pv_for_segmentation(p_raw, method=pv_filter_type, clahe_clip=pv_clahe_clip, gamma=pv_gamma)
+        
+        m_pv, _, _ = model_pv_obj.eval(
+            in_pv,
+            diameter=pv_diameter if pv_diameter > 0 else None,
+            flow_threshold=pv_flow_threshold,
+            cellprob_threshold=pv_cellprob_threshold,
+            min_size=pv_min_size,
+            resample=pv_resample
+        )
 
     # 2. PNN Detection (PNNloc + PNNscore)
     pnn_radius_um = float(calib_data.get('pnn_radius_um', 20.0))
@@ -184,6 +255,11 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
                     coords_loc.append(coord)
                     scores_score.append(sc_float)
 
+        use_min_dist = bool(calib_data.get('use_min_pnn_dist', False))
+        min_dist_px = float(calib_data.get('min_pnn_dist_px', 30.0))
+        if use_min_dist and min_dist_px > 0 and len(coords_loc) > 1:
+            coords_loc, scores_score = filter_points_by_min_distance(coords_loc, scores_score, min_dist_px)
+
     # 3. Morphometry & Ring Masks
     H, W = w_raw.shape
     m_wfa = np.zeros((H, W), dtype=np.uint16)
@@ -208,6 +284,24 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
         ring_mask[rr_inner, cc_inner] = False
         m_ring[ring_mask] = idx
         
+        disk_vals = w_raw[rr, cc]
+        # Compute true biological PNN meshwork area by segmenting the pericellular staining above local background
+        if len(disk_vals) > 0 and (np.max(disk_vals) > np.min(disk_vals)):
+            try:
+                t_local = threshold_otsu(disk_vals)
+                mesh_mask = disk_vals >= t_local
+                mesh_pixels = int(np.sum(mesh_mask))
+                if mesh_pixels < 5:
+                    mesh_pixels = len(rr)
+            except Exception:
+                mesh_pixels = len(rr)
+        else:
+            mesh_pixels = len(rr)
+
+        pnn_mesh_area = float(mesh_pixels * (px_size ** 2))
+        pnn_mesh_diameter = float(2 * np.sqrt(pnn_mesh_area / np.pi))
+        pnn_envelope_area = float(len(rr) * (px_size ** 2))
+
         wfa_sum = float(np.sum(w_raw[rr, cc]))
         wfa_mean = float(np.mean(w_raw[rr, cc])) if len(rr) > 0 else 0.0
         wfa_peri = float(np.mean(w_raw[ring_mask])) if np.sum(ring_mask) > 0 else 0.0
@@ -224,15 +318,12 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
             pv_area = float(np.sum(pv_mask) * (px_size ** 2))
             pv_diameter = float(2 * np.sqrt(pv_area / np.pi))
 
-        pnn_area = float(len(rr) * (px_size ** 2))
-        pnn_diameter = float(2 * np.sqrt(pnn_area / np.pi))
-
         r_batch.append({
             'label': idx,
             'centroid_y': r,
             'centroid_x': c,
-            'area_um2': pnn_area,
-            'diameter_um': pnn_diameter,
+            'area_um2': pnn_mesh_area,
+            'diameter_um': pnn_mesh_diameter,
             'wfa_sum_intensity': wfa_sum,
             'wfa_mean_intensity': wfa_mean,
             'wfa_pericellular_intensity': wfa_peri,
@@ -245,8 +336,9 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
             'cell_type': "PV+/PNN+" if is_pv_coloc else "PV-/PNN+",
             'pv_area_um2': pv_area,
             'pv_diameter_um': pv_diameter,
-            'pnn_area_um2': pnn_area,
-            'pnn_diameter_um': pnn_diameter,
+            'pnn_area_um2': pnn_mesh_area,
+            'pnn_diameter_um': pnn_mesh_diameter,
+            'pnn_envelope_area_um2': pnn_envelope_area,
             'score': sc
         })
 
@@ -279,7 +371,7 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
                 'pv_area_um2': pv_area,
                 'pv_diameter_um': pv_diameter,
                 'pnn_area_um2': 0.0,
-                'pnn_diameter_um': 0.0,
+                'pnn_envelope_area_um2': 0.0,
                 'score': 0.0
             })
 

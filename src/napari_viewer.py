@@ -135,76 +135,61 @@ def main():
         except Exception as e:
             print(f"Advertencia al cargar máscaras TIF: {e}")
 
-    # ─── ROIS MULTICAPA (A, B, C) ───
+    # ─── ROI ÚNICO ESTANDARIZADO ───
+    from roi import STANDARD_TEMPLATE_POLYGON, STANDARD_ROI_AREA_MM2
     base_name = os.path.basename(path)
     metrics_dir = segmented_dir.replace("data/processed/segmented", "data/processed/metrics")
     roi_json_path = get_roi_json_path(metrics_dir, base_name)
     regions_loaded = load_rois(roi_json_path)
 
-    layer_a = viewer.add_shapes(
-        regions_loaded.get("A", []),
-        shape_type='polygon',
-        name="🅰️ ROI - Región A",
-        edge_color='cyan',
-        edge_width=3,
-        face_color=[0.0, 0.95, 1.0, 0.25],
-        scale=scale,
-        opacity=0.8
-    )
+    initial_polys = regions_loaded.get("ROI", [])
+    if not initial_polys:
+        initial_polys = [STANDARD_TEMPLATE_POLYGON]
 
-    layer_b = viewer.add_shapes(
-        regions_loaded.get("B", []),
+    layer_roi = viewer.add_shapes(
+        initial_polys,
         shape_type='polygon',
-        name="🅱️ ROI - Región B",
+        name="🎯 ROI (Estandarizada — Mover/Rotar)",
         edge_color='magenta',
         edge_width=3,
         face_color=[1.0, 0.0, 1.0, 0.25],
         scale=scale,
-        opacity=0.8
-    )
-
-    layer_c = viewer.add_shapes(
-        regions_loaded.get("C", []),
-        shape_type='polygon',
-        name="🅒 ROI - Región C",
-        edge_color='yellow',
-        edge_width=3,
-        face_color=[1.0, 1.0, 0.0, 0.25],
-        scale=scale,
-        opacity=0.8
+        opacity=0.85
     )
 
     if args.edit_roi:
         try:
-            viewer.layers.selection.active = layer_a
-            layer_a.mode = 'add_polygon' if len(regions_loaded.get("A", [])) == 0 else 'select'
+            viewer.layers.selection.active = layer_roi
+            layer_roi.mode = 'select'
+            # Select first shape automatically so handles (for move/rotate) appear immediately
+            if len(layer_roi.data) > 0:
+                layer_roi.selected_data = {0}
         except Exception:
             pass
 
     def _get_current_regions_dict():
         return {
-            "A": [shape for shape in layer_a.data if len(shape) >= 3],
-            "B": [shape for shape in layer_b.data if len(shape) >= 3],
-            "C": [shape for shape in layer_c.data if len(shape) >= 3]
+            "ROI": [shape for shape in layer_roi.data if len(shape) >= 3]
         }
 
     @viewer.bind_key('Control-s', overwrite=True)
     def save_rois_shortcut(v):
         regs = _get_current_regions_dict()
-        w_shape = wfa_raw.shape if wfa_raw is not None else (1000, 1000)
-        save_rois(roi_json_path, regs, image_shape=w_shape, pixel_size_um=args.pixel_size)
-        n_a, n_b, n_c = len(regs['A']), len(regs['B']), len(regs['C'])
-        v.status = f"✅ ROIs guardadas — Región A: {n_a}, Región B: {n_b}, Región C: {n_c}"
+        w_shape = wfa_raw.shape if wfa_raw is not None else (2048, 2048)
+        payload = save_rois(roi_json_path, regs, image_shape=w_shape, pixel_size_um=args.pixel_size, is_adjusted=True)
+        area_mm2 = payload.get("total_roi_area_mm2", 0.0)
+        v.status = f"✅ ROI Guardada y Ajustada — Área: {area_mm2:.4f} mm² ({(area_mm2*1e6):,.0f} µm²)"
 
     napari.run()
 
     try:
         regs = _get_current_regions_dict()
-        w_shape = wfa_raw.shape if wfa_raw is not None else (1000, 1000)
-        save_rois(roi_json_path, regs, image_shape=w_shape, pixel_size_um=args.pixel_size)
-        print(f"✅ ROIs guardadas al cerrar Napari en: {roi_json_path}")
+        if len(regs["ROI"]) > 0:
+            w_shape = wfa_raw.shape if wfa_raw is not None else (2048, 2048)
+            payload = save_rois(roi_json_path, regs, image_shape=w_shape, pixel_size_um=args.pixel_size, is_adjusted=True)
+            print(f"✅ ROI guardada y validada en: {roi_json_path} (Área: {payload.get('total_roi_area_mm2', 0.0):.4f} mm²)")
     except Exception as e:
-        print(f"Advertencia al guardar ROIs al salir: {e}")
+        print(f"Advertencia al guardar ROI al salir: {e}")
 
 if __name__ == "__main__":
     main()

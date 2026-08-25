@@ -215,10 +215,9 @@ def load_all_dataset(_hash=None):
             roi_file = get_roi_json_path(metrics_dir, fname)
 
         regions_dict = load_rois(roi_file)
-        has_a = len(regions_dict.get('A', [])) > 0
-        has_b = len(regions_dict.get('B', [])) > 0
-        has_c = len(regions_dict.get('C', [])) > 0
-        has_any = (has_a or has_b or has_c)
+        has_roi = len(regions_dict.get('ROI', [])) > 0 or len(regions_dict.get('B', [])) > 0
+        from roi import load_roi_details
+        _, is_adj, roi_area_mm2, _ = load_roi_details(roi_file) if os.path.exists(roi_file) else ({}, False, 0.0, "")
 
         animal_id = extract_animal_id(fname)
         m2 = re.search(r'~(\d+)$', fname)
@@ -227,8 +226,11 @@ def load_all_dataset(_hash=None):
         image_catalog.append({
             'group': group, 'section': sec, 'image_name': fname, 'base_name': base_name,
             'animal_id': animal_id, 'corte_num': corte_num,
-            'has_roi_a': has_a, 'has_roi_b': has_b, 'has_roi_c': has_c,
-            'has_roi_any': has_any
+            'has_roi': has_roi,
+            'has_roi_b': has_roi,
+            'has_roi_any': has_roi,
+            'is_roi_adjusted': is_adj,
+            'roi_area_mm2': roi_area_mm2
         })
 
         if os.path.exists(csv_file):
@@ -242,8 +244,8 @@ def load_all_dataset(_hash=None):
                     df_c['corte_num']  = corte_num
                     
                     coords = df_c[['centroid_y', 'centroid_x']].values
-                    df_c['is_in_roi']  = points_in_rois(coords, regions_dict, target_region='ALL') if has_any else False
-                    df_c['roi_region'] = get_point_region_assignment(coords, regions_dict) if has_any else 'NONE'
+                    df_c['is_in_roi']  = points_in_rois(coords, regions_dict) if has_roi else False
+                    df_c['roi_region'] = get_point_region_assignment(coords, regions_dict) if has_roi else 'NONE'
                     all_cells.append(df_c)
             except Exception:
                 pass
@@ -275,19 +277,6 @@ st.sidebar.header("⚙️ Configuración del Análisis")
 if st.sidebar.button("🔄 Recargar Datos del Disco", key="stats_reload_btn"):
     st.cache_data.clear()
     st.rerun()
-
-area_scope = st.sidebar.radio(
-    "Área de Cuantificación:",
-    [
-        "🌐 Toda la Imagen (Global)",
-        "🎯 Todas las ROIs (A, B y C combinadas)",
-        "🅰️ Solo Región A",
-        "🅱️ Solo Región B",
-        "🅒 Solo Región C"
-    ],
-    index=0,
-    key="stats_area_scope"
-)
 
 level_type = st.sidebar.radio(
     "Nivel de Análisis:",
@@ -330,47 +319,9 @@ stats_mode = st.sidebar.radio(
     key="stats_mode_select"
 )
 
-# ─── ROI COVERAGE & DATA FILTERING ───
-if area_scope == "🎯 Todas las ROIs (A, B y C combinadas)":
-    valid_images_df = df_all_images[df_all_images['has_roi_any'] == True].copy()
-    active_cells_df = df_raw_nuclei[(df_raw_nuclei['is_in_roi'] == True) & (df_raw_nuclei['image_name'].isin(valid_images_df['image_name']))].copy()
-elif area_scope == "🅰️ Solo Región A":
-    valid_images_df = df_all_images[df_all_images['has_roi_a'] == True].copy()
-    active_cells_df = df_raw_nuclei[(df_raw_nuclei['roi_region'] == 'A') & (df_raw_nuclei['image_name'].isin(valid_images_df['image_name']))].copy()
-elif area_scope == "🅱️ Solo Región B":
-    valid_images_df = df_all_images[df_all_images['has_roi_b'] == True].copy()
-    active_cells_df = df_raw_nuclei[(df_raw_nuclei['roi_region'] == 'B') & (df_raw_nuclei['image_name'].isin(valid_images_df['image_name']))].copy()
-elif area_scope == "🅒 Solo Región C":
-    valid_images_df = df_all_images[df_all_images['has_roi_c'] == True].copy()
-    active_cells_df = df_raw_nuclei[(df_raw_nuclei['roi_region'] == 'C') & (df_raw_nuclei['image_name'].isin(valid_images_df['image_name']))].copy()
-else: # Toda la imagen
-    valid_images_df = df_all_images.copy()
-    active_cells_df = df_raw_nuclei.copy()
-
-# Build image level summaries for valid images
-def _img_summary_for_cells(group_cells):
-    total_pv  = int(group_cells['is_pv_plus'].sum()) if not group_cells.empty else 0
-    total_pnn = int(group_cells['is_pnn_plus'].sum()) if not group_cells.empty else 0
-    total_occ = int((group_cells['cell_type'] == 'PV+/PNN+').sum()) if not group_cells.empty else 0
-    total_hol = int((group_cells['cell_type'] == 'PV-/PNN+').sum()) if not group_cells.empty else 0
-    pv_cells  = group_cells[group_cells['is_pv_plus']  == True] if not group_cells.empty else pd.DataFrame()
-    pnn_cells = group_cells[group_cells['is_pnn_plus'] == True] if not group_cells.empty else pd.DataFrame()
-    def safe_mean(s): return float(s.mean()) if len(s) > 0 and pd.notna(s.mean()) else 0.0
-    row = {
-        'pv_count': total_pv, 'pnn_count': total_pnn,
-        'pnn_count_filled': total_occ, 'pnn_count_hollow': total_hol,
-        'pct_pnn_plus':   (total_occ / total_pv  * 100) if total_pv  > 0 else 0.0,
-        'pct_pnn_hollow': (total_hol / total_pnn * 100) if total_pnn > 0 else 0.0,
-        'mean_pv_area_um2':    safe_mean(pv_cells['pv_area_um2']) if not pv_cells.empty else 0.0,
-        'mean_pv_diameter_um': safe_mean(pv_cells['pv_diameter_um']) if not pv_cells.empty else 0.0,
-        'mean_pnn_area_um2':   safe_mean(pnn_cells['pnn_area_um2']) if not pnn_cells.empty else 0.0,
-        'mean_pnn_diameter_um':safe_mean(pnn_cells['pnn_diameter_um']) if not pnn_cells.empty else 0.0,
-        'mean_soma_area_um2':   safe_mean(pv_cells['pv_area_um2']) if not pv_cells.empty else 0.0,
-        'mean_soma_diameter_um':safe_mean(pv_cells['pv_diameter_um']) if not pv_cells.empty else 0.0,
-    }
-    for col in SKEL_COLS:
-        row[f'mean_{col}'] = safe_mean(pnn_cells[col]) if not pnn_cells.empty and col in pnn_cells.columns else 0.0
-    return row
+# ─── DATA PREPARATION (ROI & GLOBAL COMPREHENSIVE CALCULATION) ───
+valid_images_df = df_all_images.copy()
+active_cells_df = df_raw_nuclei.copy()
 
 img_summaries = []
 for _, img_row in valid_images_df.iterrows():
@@ -382,39 +333,144 @@ for _, img_row in valid_images_df.iterrows():
     base_name = img_row.get('base_name', os.path.splitext(fn)[0])
     
     px_size = 0.8913
-    area_mm2 = float((2048 * px_size * 2048 * px_size) / 1e6)
+    area_global_mm2 = float((2048 * px_size * 2048 * px_size) / 1e6)
+    area_roi_mm2 = 0.3480150625
+    
     roi_json_path = os.path.join(METRICS_BASE_DIR, g, s, f"{base_name}_rois.json")
     if not os.path.exists(roi_json_path):
         roi_json_path = get_roi_json_path(METRICS_BASE_DIR, fn)
-
-    if area_scope != "🌐 Toda la Imagen (Global)" and os.path.exists(roi_json_path):
+    if os.path.exists(roi_json_path):
         d_roi = load_rois(roi_json_path)
-        target_regs = ['A', 'B', 'C'] if 'combinadas' in area_scope else ([area_scope.split(' ')[-1]] if 'Región' in area_scope else ['A', 'B', 'C'])
+        polys = d_roi.get("ROI", [])
         total_um2 = 0.0
-        for r_k in target_regs:
-            pts_list = d_roi.get(r_k, [])
-            for poly in pts_list:
-                pts = np.array(poly)
-                if len(pts) >= 3:
-                    x, y = pts[:, 1], pts[:, 0]
-                    a_px = 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
-                    total_um2 += a_px * (px_size ** 2)
+        for poly in polys:
+            pts = np.array(poly)
+            if len(pts) >= 3:
+                x, y = pts[:, 1], pts[:, 0]
+                a_px = 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
+                total_um2 += a_px * (px_size ** 2)
         if total_um2 > 0:
-            area_mm2 = total_um2 / 1e6
-    
-    cells_in_img = active_cells_df[active_cells_df['image_name'] == fn] if not active_cells_df.empty else pd.DataFrame()
+            area_roi_mm2 = total_um2 / 1e6
+            
+    img_cells = active_cells_df[active_cells_df['image_name'] == fn] if not active_cells_df.empty else pd.DataFrame()
+    cells_roi = img_cells[img_cells['is_in_roi'] == True] if not img_cells.empty else pd.DataFrame()
+    cells_global = img_cells
+
+    def _calc_metrics_subset(c_df, area_mm2, tag):
+        pnn_cells = c_df[c_df['is_pnn_plus'] == True] if not c_df.empty else pd.DataFrame()
+        pv_cells = c_df[c_df['is_pv_plus'] == True] if not c_df.empty else pd.DataFrame()
+        
+        coloc_cells = c_df[c_df['cell_type'] == 'PV+/PNN+'] if not c_df.empty else pd.DataFrame()
+        hollow_cells = c_df[c_df['cell_type'] == 'PV-/PNN+'] if not c_df.empty else pd.DataFrame()
+        isolated_cells = c_df[c_df['cell_type'] == 'PV+/PNN-'] if not c_df.empty else pd.DataFrame()
+        
+        n_pnn = len(pnn_cells)
+        n_pv = len(pv_cells)
+        n_coloc = len(coloc_cells)
+        n_hollow = len(hollow_cells)
+        n_isolated = len(isolated_cells)
+        
+        dens_pnn = float(n_pnn / area_mm2) if area_mm2 > 0 else 0.0
+        dens_pv = float(n_pv / area_mm2) if area_mm2 > 0 else 0.0
+        dens_coloc = float(n_coloc / area_mm2) if area_mm2 > 0 else 0.0
+        dens_hollow = float(n_hollow / area_mm2) if area_mm2 > 0 else 0.0
+        dens_isolated = float(n_isolated / area_mm2) if area_mm2 > 0 else 0.0
+        
+        pct_pv_coloc = float(n_coloc / n_pv * 100.0) if n_pv > 0 else 0.0
+        pct_pv_isolated = float(n_isolated / n_pv * 100.0) if n_pv > 0 else 0.0
+        pct_pnn_hollow = float(n_hollow / n_pnn * 100.0) if n_pnn > 0 else 0.0
+        
+        def _sm(s): return float(s.mean()) if len(s) > 0 and pd.notna(s.mean()) else 0.0
+        
+        mean_pnn_area = _sm(pnn_cells['pnn_area_um2']) if 'pnn_area_um2' in pnn_cells.columns else _sm(pnn_cells['area_um2'])
+        mean_pnn_diam = _sm(pnn_cells['pnn_diameter_um']) if 'pnn_diameter_um' in pnn_cells.columns else _sm(pnn_cells['diameter_um'])
+        mean_pv_area = _sm(pv_cells['pv_area_um2']) if 'pv_area_um2' in pv_cells.columns else _sm(pv_cells['area_um2'])
+        mean_pv_diam = _sm(pv_cells['pv_diameter_um']) if 'pv_diameter_um' in pv_cells.columns else _sm(pv_cells['diameter_um'])
+        
+        wfa_sum = _sm(pnn_cells['wfa_sum_intensity']) if not pnn_cells.empty and 'wfa_sum_intensity' in pnn_cells.columns else 0.0
+        wfa_mean = _sm(pnn_cells['wfa_mean_intensity']) if not pnn_cells.empty and 'wfa_mean_intensity' in pnn_cells.columns else 0.0
+        wfa_peri = _sm(pnn_cells['wfa_pericellular_intensity']) if not pnn_cells.empty and 'wfa_pericellular_intensity' in pnn_cells.columns else 0.0
+
+        return {
+            f'pnn_density_{tag}': dens_pnn,
+            f'pnn_count_{tag}': n_pnn,
+            f'pnn_filled_density_{tag}': dens_coloc,
+            f'pnn_count_filled_{tag}': n_coloc,
+            f'pnn_hollow_density_{tag}': dens_hollow,
+            f'pnn_count_hollow_{tag}': n_hollow,
+            f'pct_pnn_hollow_{tag}': pct_pnn_hollow,
+            
+            f'pv_density_{tag}': dens_pv,
+            f'pv_count_{tag}': n_pv,
+            f'pv_coloc_density_{tag}': dens_coloc,
+            f'pv_count_coloc_{tag}': n_coloc,
+            f'pv_isolated_density_{tag}': dens_isolated,
+            f'pv_count_isolated_{tag}': n_isolated,
+            f'pct_pv_wrapped_{tag}': pct_pv_coloc,
+            f'pct_pv_isolated_{tag}': pct_pv_isolated,
+            
+            f'mean_pnn_area_{tag}': mean_pnn_area,
+            f'mean_pnn_diameter_{tag}': mean_pnn_diam,
+            f'mean_pv_area_{tag}': mean_pv_area,
+            f'mean_pv_diameter_{tag}': mean_pv_diam,
+            
+            f'mean_wfa_int_density_{tag}': wfa_sum,
+            f'mean_wfa_mean_intensity_{tag}': wfa_mean,
+            f'mean_wfa_pericellular_intensity_{tag}': wfa_peri,
+            f'image_area_mm2_{tag}': area_mm2
+        }
+
     base = {
-        'group': g, 'section': s, 'image_name': fn, 'animal_id': aid, 'corte_num': cnum,
-        'image_area_mm2': area_mm2
+        'group': g, 'section': s, 'image_name': fn, 'animal_id': aid, 'corte_num': cnum, 'base_name': base_name
     }
-    cell_stats = _img_summary_for_cells(cells_in_img)
-    base.update(cell_stats)
+    base.update(_calc_metrics_subset(cells_roi, area_roi_mm2, 'roi'))
+    base.update(_calc_metrics_subset(cells_global, area_global_mm2, 'global'))
     
-    base['pnn_density_mm2'] = float(base['pnn_count'] / area_mm2) if area_mm2 > 0 else 0.0
-    base['pnn_filled_density_mm2'] = float(base['pnn_count_filled'] / area_mm2) if area_mm2 > 0 else 0.0
-    base['pnn_hollow_density_mm2'] = float(base['pnn_count_hollow'] / area_mm2) if area_mm2 > 0 else 0.0
-    base['pv_density_mm2'] = float(base['pv_count'] / area_mm2) if area_mm2 > 0 else 0.0
-    
+    # Diffuse WFA Neuropil Component
+    mask_file = os.path.join("data/processed/segmented", g, s, f"{base_name}_masks.tif")
+    if os.path.exists(mask_file):
+        try:
+            stk = tiff.imread(mask_file)
+            m_wfa = stk[2] if len(stk.shape) >= 3 and stk.shape[0] >= 3 else np.zeros((2048, 2048), dtype=np.uint16)
+            w_raw = stk[4] if len(stk.shape) >= 3 and stk.shape[0] >= 5 else (stk[3] if stk.shape[0] >= 4 else np.zeros_like(m_wfa))
+            
+            roi_mask = np.zeros_like(m_wfa, dtype=bool)
+            if os.path.exists(roi_json_path):
+                d_roi = load_rois(roi_json_path)
+                roi_mask = create_roi_mask(w_raw.shape, d_roi, target_region='ALL')
+            else:
+                roi_mask = np.ones_like(m_wfa, dtype=bool)
+                
+            pnn_mask = (m_wfa > 0)
+            diffuse_mask_global = ~pnn_mask
+            diffuse_mask_roi = diffuse_mask_global & roi_mask
+            diffuse_mask_outside = diffuse_mask_global & (~roi_mask)
+            
+            wfa_diff_roi = float(np.mean(w_raw[diffuse_mask_roi])) if np.sum(diffuse_mask_roi) > 0 else 0.0
+            wfa_diff_outside = float(np.mean(w_raw[diffuse_mask_outside])) if np.sum(diffuse_mask_outside) > 0 else 0.0
+            wfa_diff_global = float(np.mean(w_raw[diffuse_mask_global])) if np.sum(diffuse_mask_global) > 0 else 0.0
+            
+            pnn_mean_roi = float(np.mean(w_raw[pnn_mask & roi_mask])) if np.sum(pnn_mask & roi_mask) > 0 else 0.0
+            pnn_mean_global = float(np.mean(w_raw[pnn_mask])) if np.sum(pnn_mask) > 0 else 0.0
+            
+            base['wfa_diffuse_mean_roi'] = wfa_diff_roi
+            base['wfa_diffuse_mean_outside_roi'] = wfa_diff_outside
+            base['wfa_diffuse_mean_global'] = wfa_diff_global
+            base['wfa_signal_to_diffuse_ratio_roi'] = float(pnn_mean_roi / (wfa_diff_roi + 1e-8)) if wfa_diff_roi > 0 else 1.0
+            base['wfa_signal_to_diffuse_ratio_global'] = float(pnn_mean_global / (wfa_diff_global + 1e-8)) if wfa_diff_global > 0 else 1.0
+        except Exception:
+            base['wfa_diffuse_mean_roi'] = 0.0
+            base['wfa_diffuse_mean_outside_roi'] = 0.0
+            base['wfa_diffuse_mean_global'] = 0.0
+            base['wfa_signal_to_diffuse_ratio_roi'] = 1.0
+            base['wfa_signal_to_diffuse_ratio_global'] = 1.0
+    else:
+        base['wfa_diffuse_mean_roi'] = 0.0
+        base['wfa_diffuse_mean_outside_roi'] = 0.0
+        base['wfa_diffuse_mean_global'] = 0.0
+        base['wfa_signal_to_diffuse_ratio_roi'] = 1.0
+        base['wfa_signal_to_diffuse_ratio_global'] = 1.0
+
     img_summaries.append(base)
 
 df_img = pd.DataFrame(img_summaries) if img_summaries else pd.DataFrame()
@@ -424,7 +480,7 @@ def aggregate_subject_level_clean(df_image_level):
     if df_image_level.empty:
         return pd.DataFrame()
     numeric_cols = [c for c in df_image_level.columns
-                    if c not in ['group','section','image_name','animal_id','corte_num']
+                    if c not in ['group','section','image_name','animal_id','corte_num','base_name']
                     and pd.api.types.is_numeric_dtype(df_image_level[c])]
     summaries = []
     for vals, grp in df_image_level.groupby(['group','section','animal_id']):
@@ -437,67 +493,134 @@ def aggregate_subject_level_clean(df_image_level):
 
 df_subj = aggregate_subject_level_clean(df_img)
 
-# ─── EXPLICIT N AND ROI COVERAGE CARD ───
+# ─── EXPLICIT N AND DATA CARD ───
 total_imgs_all = len(df_all_images)
-valid_imgs_cnt = len(valid_images_df)
-excluded_imgs_cnt = total_imgs_all - valid_imgs_cnt
 total_cells_cnt = len(active_cells_df)
 total_subjs_cnt = valid_images_df['animal_id'].nunique() if not valid_images_df.empty else 0
 
 st.markdown('<div class="stats-box">', unsafe_allow_html=True)
 c_box1, c_box2, c_box3, c_box4 = st.columns(4)
-c_box1.metric("📐 Área Seleccionada", area_scope.split(" ")[1] if " " in area_scope else area_scope)
+c_box1.metric("📐 Métricas Disponibles", "ROI (0.348 mm²) y Globales")
 c_box2.metric("🐀 Sujetos Activos (N_suj)", f"{total_subjs_cnt}")
-c_box3.metric("🔬 Preparados Validados (N_prep)", f"{valid_imgs_cnt} / {total_imgs_all}")
-c_box4.metric("🧫 Células en ROI (N_células)", f"{total_cells_cnt:,}")
+c_box3.metric("🔬 Preparados Totales (N_prep)", f"{total_imgs_all}")
+c_box4.metric("🧫 Células Totales (N_células)", f"{total_cells_cnt:,}")
 
-if excluded_imgs_cnt > 0:
-    st.warning(f"⚠️ **Atención sobre Tamaño Muestral ($N$):** Se excluyeron **{excluded_imgs_cnt}** preparados del análisis porque no tenían la ROI seleccionada (`{area_scope}`) trazada. Se analizan **{valid_imgs_cnt}** preparados para asegurar que los promedios no se distorsionen con ceros falsos.")
-else:
-    st.success(f"✅ **Consistencia del Muestreo ($N$):** Se están considerando los **{valid_imgs_cnt}** preparados completos del dataset.")
+with st.expander("📐 Desglose de Área y Consistencia de ROIs por Grupo Experimental", expanded=False):
+    roi_grp_rows = []
+    for (grp, sec), g_df in df_img.groupby(['group', 'section']):
+        s_cnt = g_df['animal_id'].nunique()
+        i_cnt = len(g_df)
+        a_mean = g_df['image_area_mm2_roi'].mean()
+        a_std = g_df['image_area_mm2_roi'].std()
+        roi_grp_rows.append({
+            "Grupo Experimental": grp,
+            "Hemisferio": sec,
+            "N Sujetos": s_cnt,
+            "N Preparados": i_cnt,
+            "Área Media ROI (mm²)": f"{a_mean:.4f}" if pd.isna(a_std) or a_std < 1e-4 else f"{a_mean:.4f} ± {a_std:.4f}",
+            "Área Media ROI (µm²)": f"{(a_mean * 1e6):,.0f}",
+            "Área Global Media (mm²)": f"{g_df['image_area_mm2_global'].mean():.2f}"
+        })
+    df_roi_table = pd.DataFrame(roi_grp_rows)
+    st.dataframe(df_roi_table, use_container_width=True)
 
 st.markdown('</div>', unsafe_allow_html=True)
 
 # Dynamic Variable Label generator
 def get_dynamic_labels(level):
-    suffix = "por sujeto" if level == "Por Sujeto (animal, promediando cortes)" else "por preparado" if level == "Por Preparado/Corte (imagen)" else "por célula"
+    suffix = "— Sujeto" if level == "Por Sujeto (animal, promediando cortes)" else "— Preparado" if level == "Por Preparado/Corte (imagen)" else "— Célula"
     
-    pv_vars = {
-        "pv_density_mm2": f"Densidad de Interneuronas PV+ (células/mm²) {suffix}",
-        "pv_count": f"N° de Interneuronas PV+ Totales {suffix}",
-        "mean_pv_area_um2": "Área Promedio Soma PV+ (µm²)",
-        "mean_pv_diameter_um": "Diámetro Promedio Soma PV+ (µm)",
-        "pv_area_um2": "Área del Soma PV+ (µm²) — por Célula",
-        "pv_diameter_um": "Diámetro del Soma PV+ (µm) — por Célula",
-        "image_area_mm2": f"Área de Cuantificación (mm²) {suffix}"
-    }
-    
-    pnn_vars = {
-        "pnn_density_mm2": f"Densidad de Redes PNN+ (PNNs/mm²) {suffix}",
-        "pnn_count": f"N° de Redes PNN+ Totales {suffix}",
-        "pnn_filled_density_mm2": f"Densidad PNN+ Ocupadas (PV+/PNN+) por mm² {suffix}",
-        "pnn_count_filled": f"N° de PNN+ Ocupadas (PV+/PNN+) {suffix}",
-        "pnn_hollow_density_mm2": f"Densidad PNN+ Huecas (PNN+/PV-) por mm² {suffix}",
-        "pnn_count_hollow": f"N° de PNN+ Huecas (PNN+/PV-) {suffix}",
-        "pct_pnn_plus": "% de PV+ con Red PNN (Coexpresión)",
-        "pct_pnn_hollow": "% de PNN+ que son Huecas",
-        "mean_pnn_area_um2": "Área Promedio de PNN (µm²)",
-        "mean_pnn_diameter_um": "Diámetro Promedio de PNN (µm)",
-        "mean_score": "Confianza Promedio (PNNscore)",
-        "pnn_area_um2": "Área de PNN (µm²) — por Célula",
-        "pnn_diameter_um": "Diámetro de PNN (µm) — por Célula",
-        "score": "Confianza PNNscore (IA) — por Célula",
-        "image_area_mm2": f"Área de Cuantificación (mm²) {suffix}"
-    }
-    return pv_vars, pnn_vars
+    if level == "Por Célula (distribuciones individuales)":
+        pv_vars = {
+            "pv_area_um2": "Área del Soma PV+ (µm²) — por Célula",
+            "pv_diameter_um": "Diámetro del Soma PV+ (µm) — por Célula",
+        }
+        pnn_vars = {
+            "pnn_area_um2": "Área Malla PNN (µm²) — por Célula",
+            "pnn_diameter_um": "Diámetro Malla PNN (µm) — por Célula",
+            "score": "Confianza PNNscore (IA) — por Célula",
+        }
+        intensity_vars = {
+            "wfa_sum_intensity": "Densidad Integrada Fluorescencia WFA (Suma) — por Célula",
+            "wfa_mean_intensity": "Intensidad Media Fluorescencia WFA en PNN — por Célula",
+            "wfa_pericellular_intensity": "Intensidad Pericelular Anillo WFA — por Célula"
+        }
+        diffuse_vars = {
+            "wfa_diffuse_mean_roi": "Intensidad Fondo Difuso WFA (Dentro de ROI)",
+            "wfa_diffuse_mean_outside_roi": "Intensidad Fondo Difuso WFA (Fuera de ROI)",
+            "wfa_diffuse_mean_global": "Intensidad Fondo Difuso WFA (Global / Toda la Imagen)"
+        }
+    else:
+        pv_vars = {
+            "pv_density_roi": f"Densidad PV+ Totales (/mm²) (ROI) {suffix}",
+            "pv_density_global": f"Densidad PV+ Totales (/mm²) (Global) {suffix}",
+            "pv_count_roi": f"N° Interneuronas PV+ Totales (ROI) {suffix}",
+            "pv_count_global": f"N° Interneuronas PV+ Totales (Global) {suffix}",
+            "pv_coloc_density_roi": f"Densidad PV+/PNN+ (/mm²) (ROI) {suffix}",
+            "pv_coloc_density_global": f"Densidad PV+/PNN+ (/mm²) (Global) {suffix}",
+            "pv_coloc_count_roi": f"N° PV+/PNN+ Colocalizadas (ROI) {suffix}",
+            "pv_coloc_count_global": f"N° PV+/PNN+ Colocalizadas (Global) {suffix}",
+            "pv_isolated_density_roi": f"Densidad PV+/PNN- Libres de PNN (/mm²) (ROI) {suffix}",
+            "pv_isolated_density_global": f"Densidad PV+/PNN- Libres de PNN (/mm²) (Global) {suffix}",
+            "pv_isolated_count_roi": f"N° PV+/PNN- Libres de PNN (ROI) {suffix}",
+            "pv_isolated_count_global": f"N° PV+/PNN- Libres de PNN (Global) {suffix}",
+            "pct_pv_wrapped_roi": f"% de PV+ Envueltas en PNN (PV+/PNN+) (ROI) {suffix}",
+            "pct_pv_wrapped_global": f"% de PV+ Envueltas en PNN (PV+/PNN+) (Global) {suffix}",
+            "pct_pv_isolated_roi": f"% de PV+ Libres de PNN (PV+/PNN-) (ROI) {suffix}",
+            "pct_pv_isolated_global": f"% de PV+ Libres de PNN (PV+/PNN-) (Global) {suffix}",
+            "mean_pv_area_roi": f"Área Promedio Soma PV+ (µm²) (ROI) {suffix}",
+            "mean_pv_area_global": f"Área Promedio Soma PV+ (µm²) (Global) {suffix}",
+            "mean_pv_diameter_roi": f"Diámetro Promedio Soma PV+ (µm²) (ROI) {suffix}",
+            "mean_pv_diameter_global": f"Diámetro Promedio Soma PV+ (µm²) (Global) {suffix}"
+        }
+        
+        pnn_vars = {
+            "pnn_density_roi": f"Densidad PNNs Totales (/mm²) (ROI) {suffix}",
+            "pnn_density_global": f"Densidad PNNs Totales (/mm²) (Global) {suffix}",
+            "pnn_count_roi": f"N° Redes PNN+ Totales (ROI) {suffix}",
+            "pnn_count_global": f"N° Redes PNN+ Totales (Global) {suffix}",
+            "pnn_filled_density_roi": f"Densidad PNNs Rellenas PV+/PNN+ (/mm²) (ROI) {suffix}",
+            "pnn_filled_density_global": f"Densidad PNNs Rellenas PV+/PNN+ (/mm²) (Global) {suffix}",
+            "pnn_count_filled_roi": f"N° PNNs Rellenas PV+/PNN+ (ROI) {suffix}",
+            "pnn_count_filled_global": f"N° PNNs Rellenas PV+/PNN+ (Global) {suffix}",
+            "pnn_hollow_density_roi": f"Densidad PNNs Huecas PV-/PNN+ (/mm²) (ROI) {suffix}",
+            "pnn_hollow_density_global": f"Densidad PNNs Huecas PV-/PNN+ (/mm²) (Global) {suffix}",
+            "pnn_count_hollow_roi": f"N° PNNs Huecas PV-/PNN+ (ROI) {suffix}",
+            "pnn_count_hollow_global": f"N° PNNs Huecas PV-/PNN+ (Global) {suffix}",
+            "pct_pnn_hollow_roi": f"% PNNs Huecas (PV-/PNN+) (ROI) {suffix}",
+            "pct_pnn_hollow_global": f"% PNNs Huecas (PV-/PNN+) (Global) {suffix}",
+            "mean_pnn_area_roi": f"Área Promedio Malla PNN (µm²) (ROI) {suffix}",
+            "mean_pnn_area_global": f"Área Promedio Malla PNN (µm²) (Global) {suffix}",
+            "mean_pnn_diameter_roi": f"Diámetro Promedio Malla PNN (µm) (ROI) {suffix}",
+            "mean_pnn_diameter_global": f"Diámetro Promedio Malla PNN (µm) (Global) {suffix}"
+        }
 
-PV_VARS, PNN_VARS = get_dynamic_labels(level_type)
+        intensity_vars = {
+            "mean_wfa_int_density_roi": f"Media Integrada Fluorescencia WFA (Densidad Integrada) (ROI) {suffix}",
+            "mean_wfa_int_density_global": f"Media Integrada Fluorescencia WFA (Densidad Integrada) (Global) {suffix}",
+            "mean_wfa_mean_intensity_roi": f"Intensidad Media Fluorescencia WFA en PNN (ROI) {suffix}",
+            "mean_wfa_mean_intensity_global": f"Intensidad Media Fluorescencia WFA en PNN (Global) {suffix}",
+            "mean_wfa_pericellular_intensity_roi": f"Intensidad Anillo Pericelular WFA (ROI) {suffix}",
+            "mean_wfa_pericellular_intensity_global": f"Intensidad Anillo Pericelular WFA (Global) {suffix}"
+        }
 
-tab_pv, tab_pnn, tab_lupori, tab_global_wfa = st.tabs([
-    "🧪 Interneuronas PV+ (Paso 1)",
-    "🧠 Redes Perineuronales PNN (Paso 2)",
-    "⚡ Métricas Lupori (Potencia y Coexpresión)",
-    "🌐 Señal Global Integrada WFA"
+        diffuse_vars = {
+            "wfa_diffuse_mean_roi": f"Intensidad Fondo Difuso WFA (Dentro de ROI) {suffix}",
+            "wfa_diffuse_mean_outside_roi": f"Intensidad Fondo Difuso WFA (Fuera de ROI) {suffix}",
+            "wfa_diffuse_mean_global": f"Intensidad Fondo Difuso WFA (Global / Toda la Imagen) {suffix}",
+            "wfa_signal_to_diffuse_ratio_roi": f"Ratio Señal PNN / Fondo Difuso (ROI) {suffix}",
+            "wfa_signal_to_diffuse_ratio_global": f"Ratio Señal PNN / Fondo Difuso (Global) {suffix}"
+        }
+        
+    return pv_vars, pnn_vars, intensity_vars, diffuse_vars
+
+PV_VARS, PNN_VARS, INTENSITY_VARS, DIFFUSE_VARS = get_dynamic_labels(level_type)
+
+tab_pv, tab_pnn, tab_wfa_int, tab_diffuse = st.tabs([
+    "🧪 Interneuronas PV+ (Subpoblaciones)",
+    "🧠 Redes Perineuronales PNN (Huecas / Rellenas)",
+    "🔬 Intensidades y Medias Integradas WFA",
+    "🌫️ Espacio Difuso WFA (Dentro / Fuera de ROI)"
 ])
 
 def run_stats_layout(df_base, var_options, selected_var_key, title_lbl):
@@ -523,23 +646,22 @@ def run_stats_layout(df_base, var_options, selected_var_key, title_lbl):
 
     st.subheader(f"📈 {var_options[selected_var_key]} — {title_lbl}")
 
-    scope_lbl = f"Área: {area_scope}"
     if level_type == "Por Sujeto (animal, promediando cortes)":
-        st.markdown(f"""
+        st.markdown("""
         <div class="level-info">
-        📌 <b>Nivel: Sujeto/Animal [{scope_lbl}]</b> — Cada punto representa el promedio de cortes para un animal individual en el hemisferio correspondiente (IPSI o CONTRA).
+        📌 <b>Nivel: Sujeto/Animal</b> — Cada punto representa el promedio de cortes para un animal individual en el hemisferio correspondiente (IPSI o CONTRA).
         </div>
         """, unsafe_allow_html=True)
     elif level_type == "Por Preparado/Corte (imagen)":
-        st.markdown(f"""
+        st.markdown("""
         <div class="level-info">
-        📌 <b>Nivel: Preparado/Corte [{scope_lbl}]</b> — Cada punto representa la métrica total/promedio de una imagen TIFF.
+        📌 <b>Nivel: Preparado/Corte</b> — Cada punto representa la métrica total/promedio de una imagen TIFF.
         </div>
         """, unsafe_allow_html=True)
     else:
-        st.markdown(f"""
+        st.markdown("""
         <div class="level-info">
-        📌 <b>Nivel: Célula Individual [{scope_lbl}]</b> — Cada punto representa una célula individual detectada dentro de la ROI seleccionada.
+        📌 <b>Nivel: Célula Individual</b> — Cada punto representa una célula individual detectada.
         </div>
         """, unsafe_allow_html=True)
 
@@ -1148,7 +1270,7 @@ with tab_pv:
     if df_img.empty:
         st.info("No hay datos de PV+ disponibles.")
     else:
-        st.header("Análisis de Interneuronas PV+ (Paso 1)")
+        st.header("🧪 Análisis de Interneuronas PV+ (Subpoblaciones)")
         selected_pv_var = st.selectbox("Variable PV+:", list(PV_VARS.keys()), format_func=lambda x: PV_VARS[x], key="pv_var")
 
         is_cell_var = selected_pv_var in ["pv_area_um2", "pv_diameter_um"]
@@ -1156,12 +1278,8 @@ with tab_pv:
             df_pv_base = active_cells_df[active_cells_df['is_pv_plus'] == True].copy()
         elif level_type == "Por Sujeto (animal, promediando cortes)":
             df_pv_base = df_subj.copy()
-            if selected_pv_var == "pv_area_um2": df_pv_base['pv_area_um2'] = df_pv_base['mean_pv_area_um2']
-            if selected_pv_var == "pv_diameter_um": df_pv_base['pv_diameter_um'] = df_pv_base['mean_pv_diameter_um']
         else: # Por Preparado/Corte (imagen)
             df_pv_base = df_img.copy()
-            if selected_pv_var == "pv_area_um2": df_pv_base['pv_area_um2'] = df_pv_base['mean_pv_area_um2']
-            if selected_pv_var == "pv_diameter_um": df_pv_base['pv_diameter_um'] = df_pv_base['mean_pv_diameter_um']
 
         run_stats_layout(df_pv_base, PV_VARS, selected_pv_var, "Interneuronas PV+")
 
@@ -1170,7 +1288,7 @@ with tab_pnn:
     if df_img.empty:
         st.info("No hay datos de PNN disponibles.")
     else:
-        st.header("Análisis de Redes Perineuronales PNN (Paso 2)")
+        st.header("🧠 Análisis de Redes Perineuronales PNN (Huecas y Rellenas)")
         selected_pnn_var = st.selectbox("Variable PNN:", list(PNN_VARS.keys()), format_func=lambda x: PNN_VARS[x], key="pnn_var")
 
         is_cell_var = selected_pnn_var in ["pnn_area_um2", "pnn_diameter_um", "score"]
@@ -1178,250 +1296,68 @@ with tab_pnn:
             df_pnn_base = active_cells_df[active_cells_df['is_pnn_plus'] == True].copy()
         elif level_type == "Por Sujeto (animal, promediando cortes)":
             df_pnn_base = df_subj.copy()
-            if selected_pnn_var == "pnn_area_um2": df_pnn_base['pnn_area_um2'] = df_pnn_base['mean_pnn_area_um2']
-            if selected_pnn_var == "pnn_diameter_um": df_pnn_base['pnn_diameter_um'] = df_pnn_base['mean_pnn_diameter_um']
-            if selected_pnn_var == "score": df_pnn_base['score'] = df_pnn_base['mean_score']
         else: # Por Preparado/Corte (imagen)
             df_pnn_base = df_img.copy()
-            if selected_pnn_var == "pnn_area_um2": df_pnn_base['pnn_area_um2'] = df_pnn_base['mean_pnn_area_um2']
-            if selected_pnn_var == "pnn_diameter_um": df_pnn_base['pnn_diameter_um'] = df_pnn_base['mean_pnn_diameter_um']
-            if selected_pnn_var == "score": df_pnn_base['score'] = df_pnn_base['mean_score']
 
         run_stats_layout(df_pnn_base, PNN_VARS, selected_pnn_var, "Redes Perineuronales PNN")
 
-@st.cache_data
-def get_image_wfa_component_metrics(mask_file, roi_json_path, area_scope, px_size=0.65):
-    if not os.path.exists(mask_file):
-        return None
-    try:
-        stk = tiff.imread(mask_file)
-        if len(stk.shape) < 3 or stk.shape[0] < 5:
-            return None
-        m_wfa = stk[2]
-        w_raw = stk[4]
-
-        if area_scope != "🌐 Toda la Imagen (Global)" and os.path.exists(roi_json_path):
-            d_roi = load_rois(roi_json_path)
-            target_reg = 'ALL' if 'combinadas' in area_scope else area_scope.split(' ')[-1]
-            roi_mask = create_roi_mask(w_raw.shape, d_roi, target_region=target_reg)
-        else:
-            roi_mask = np.ones_like(w_raw, dtype=bool)
-
-        diff_mask = (m_wfa == 0) & roi_mask
-        pnn_mask = (m_wfa > 0) & roi_mask
-
-        diff_mean = float(np.mean(w_raw[diff_mask])) if np.sum(diff_mask) > 0 else 0.0
-        diff_sum = float(np.sum(w_raw[diff_mask]))
-        tot_mean = float(np.mean(w_raw[roi_mask])) if np.sum(roi_mask) > 0 else 0.0
-        tot_sum = float(np.sum(w_raw[roi_mask]))
-        pnn_mean = float(np.mean(w_raw[pnn_mask])) if np.sum(pnn_mask) > 0 else 0.0
-        pnn_sum = float(np.sum(w_raw[pnn_mask]))
-
-        diff_norm = float(diff_mean / (np.mean(w_raw) + 1e-8))
-        ratio_pnn_diff = float(pnn_mean / (diff_mean + 1e-8)) if diff_mean > 0 else 0.0
-
-        return {
-            'mean_diffuse_wfa_intensity_raw': diff_mean,
-            'diffuse_wfa_fluorescence_norm': diff_norm,
-            'total_diffuse_wfa_signal': diff_sum,
-            'mean_pnn_wfa_intensity_raw': pnn_mean,
-            'total_pnn_wfa_signal': pnn_sum,
-            'ratio_pnn_to_diffuse': ratio_pnn_diff,
-            'mean_wfa_intensity_raw': tot_mean,
-            'total_integrated_wfa_signal': tot_sum
-        }
-    except Exception:
-        return None
-
-def compute_dynamic_lupori_metrics(valid_imgs_df, active_cells_df, area_scope):
-    px_size = 0.65
-    rows = []
-
-    for idx, img_row in valid_imgs_df.iterrows():
-        img_name = img_row['image_name']
-        grp = img_row['group']
-        sec = img_row['section']
-        anim = img_row['animal_id']
-        base_name = img_row.get('base_name', os.path.splitext(img_name)[0])
-
-        img_cells = active_cells_df[active_cells_df['image_name'] == img_name]
-
-        n_pnn = int((img_cells['is_pnn_plus'] == True).sum()) if not img_cells.empty else 0
-        n_pv = int((img_cells['is_pv_plus'] == True).sum()) if not img_cells.empty else 0
-        n_coloc = int((img_cells['cell_type'] == 'PV+/PNN+').sum()) if not img_cells.empty else 0
-
-        area_mm2 = float((2048 * px_size * 2048 * px_size) / 1e6)
-        roi_json_path = os.path.join(METRICS_BASE_DIR, grp, sec, f"{base_name}_rois.json")
-        if not os.path.exists(roi_json_path):
-            roi_json_path = get_roi_json_path(METRICS_BASE_DIR, img_name)
-
-        if area_scope != "🌐 Toda la Imagen (Global)" and os.path.exists(roi_json_path):
-            d_roi = load_rois(roi_json_path)
-            target_regs = ['A', 'B', 'C'] if 'combinadas' in area_scope else ([area_scope.split(' ')[-1]] if 'Región' in area_scope else ['A', 'B', 'C'])
-            total_um2 = 0.0
-            for r_k in target_regs:
-                pts_list = d_roi.get(r_k, [])
-                for poly in pts_list:
-                    pts = np.array(poly)
-                    if len(pts) >= 3:
-                        x, y = pts[:, 1], pts[:, 0]
-                        a_px = 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
-                        total_um2 += a_px * (px_size ** 2)
-            if total_um2 > 0:
-                area_mm2 = total_um2 / 1e6
-
-        pnn_density = float(n_pnn / area_mm2) if area_mm2 > 0 else 0.0
-        pv_density = float(n_pv / area_mm2) if area_mm2 > 0 else 0.0
-        coloc_density = float(n_coloc / area_mm2) if area_mm2 > 0 else 0.0
-        pct_pv = float((n_coloc / n_pv * 100.0)) if n_pv > 0 else 0.0
-
-        pnn_cells = img_cells[img_cells['is_pnn_plus'] == True] if not img_cells.empty else pd.DataFrame()
-        wfa_pericell = float(pnn_cells['wfa_pericellular_norm'].mean()) if not pnn_cells.empty and 'wfa_pericellular_norm' in pnn_cells.columns and pd.notna(pnn_cells['wfa_pericellular_norm'].mean()) else 0.0
-
-        pnn_energy = float(pnn_density * wfa_pericell)
-        coloc_energy = float(coloc_density * wfa_pericell)
-
-        # Check segmented masks for precise diffuse WFA calculation (outside PNN circles)
-        mask_file = os.path.join("data/processed/segmented", grp, sec, f"{base_name}_masks.tif")
-        wfa_comp = get_image_wfa_component_metrics(mask_file, roi_json_path, area_scope, px_size)
-
-        if wfa_comp is not None:
-            diffuse_wfa_raw = wfa_comp['mean_diffuse_wfa_intensity_raw']
-            diffuse_wfa_norm = wfa_comp['diffuse_wfa_fluorescence_norm']
-            diffuse_wfa_sum = wfa_comp['total_diffuse_wfa_signal']
-            pnn_wfa_raw = wfa_comp['mean_pnn_wfa_intensity_raw']
-            ratio_pnn_diff = wfa_comp['ratio_pnn_to_diffuse']
-            total_wfa_sum = wfa_comp['total_integrated_wfa_signal']
-            mean_wfa_raw = wfa_comp['mean_wfa_intensity_raw']
-        else:
-            wfa_sum = float(img_cells['wfa_sum_intensity'].sum()) if not img_cells.empty and 'wfa_sum_intensity' in img_cells.columns else 0.0
-            diffuse_wfa_raw = float(img_cells['wfa_mean_intensity'].mean()) if not img_cells.empty and 'wfa_mean_intensity' in img_cells.columns else 0.0
-            diffuse_wfa_norm = diffuse_wfa_raw / 255.0
-            diffuse_wfa_sum = wfa_sum
-            pnn_wfa_raw = float(pnn_cells['wfa_mean_intensity'].mean()) if not pnn_cells.empty and 'wfa_mean_intensity' in pnn_cells.columns else diffuse_wfa_raw
-            ratio_pnn_diff = (pnn_wfa_raw / (diffuse_wfa_raw + 1e-8)) if diffuse_wfa_raw > 0 else 1.0
-            total_wfa_sum = wfa_sum
-            mean_wfa_raw = diffuse_wfa_raw
-
-        sex, cond, order = parse_group(grp)
-
-        rows.append({
-            'group': grp, 'section': sec, 'image_name': img_name, 'base_name': base_name, 'animal_id': anim,
-            'sex': sex, 'condition': cond,
-            'pnn_density_mm2': pnn_density, 'pv_density_mm2': pv_density,
-            'coloc_density_mm2': coloc_density, 'pct_pv_surrounded_by_pnn': pct_pv,
-            'mean_pnn_pericellular_wfa_norm': wfa_pericell,
-            'pnn_energy': pnn_energy, 'coloc_energy': coloc_energy,
-            'mean_diffuse_wfa_intensity_raw': diffuse_wfa_raw,
-            'diffuse_wfa_fluorescence_norm': diffuse_wfa_norm,
-            'total_diffuse_wfa_signal': diffuse_wfa_sum,
-            'diffuse_wfa_density_mm2': float(diffuse_wfa_sum / area_mm2) if area_mm2 > 0 else 0.0,
-            'mean_pnn_wfa_intensity_raw': pnn_wfa_raw,
-            'ratio_pnn_to_diffuse': ratio_pnn_diff,
-            'total_integrated_wfa_signal': total_wfa_sum,
-            'integrated_wfa_density_mm2': float(total_wfa_sum / area_mm2) if area_mm2 > 0 else 0.0,
-            'mean_wfa_intensity_raw': mean_wfa_raw,
-            'diffuse_wfa_fluorescence': diffuse_wfa_norm,
-            'image_area_mm2': area_mm2
-        })
-
-    return pd.DataFrame(rows)
-
-# 3. TAB LUPORI METRICS (POTENCIA, DENSIDAD, ENERGÍA Y COEXPRESIÓN)
-with tab_lupori:
-    st.header("⚡ Cuantificación Método Lupori et al. (2023)")
-    st.markdown("""
-    **Métricas Oficiales:**
-    * **Densidad (Density):** $N^\circ \text{de células o PNNs / mm}^2$
-    * **Potencia (Energy):** $\text{Densidad} \times \text{Intensidad Promedio Normalizada (0-1)} = \frac{\sum \text{intensity}_i}{\text{Área mm}^2}$
-    * **Intensidad Circundante WFA:** Intensidad medida en el anillo de expansión perineuronal ($3\text{--}5\,\mu\text{m}$) alrededor del soma.
-    * **Coexpresión:** $\%$ de células PV+ que están rodeadas por una red PNN+.
-    """)
-
-    df_lup_filtered = compute_dynamic_lupori_metrics(valid_images_df, active_cells_df, area_scope)
-
-    if df_lup_filtered.empty:
-        st.info("No se encontraron métricas Lupori disponibles para la selección actual.")
+# 3. TAB INTENSIDADES Y MEDIAS INTEGRADAS WFA
+with tab_wfa_int:
+    if df_img.empty:
+        st.info("No hay datos de intensidades WFA disponibles.")
     else:
-        st.success(f"✅ Cálculo dinámico de la cuantificación Lupori con **{len(df_lup_filtered)}** preparados válidos para {area_scope}.")
-        
-        LUPORI_VARS = {
-            "pnn_energy": "Potencia PNN (Energy)",
-            "coloc_energy": "Potencia Coexpresión PV+/PNN+ (Energy)",
-            "pnn_density_mm2": "Densidad de PNN+ (redes / mm²)",
-            "pv_density_mm2": "Densidad de PV+ (células / mm²)",
-            "coloc_density_mm2": "Densidad de Coexpresión (células PV+/PNN+ / mm²)",
-            "pct_pv_surrounded_by_pnn": "% PV+ rodeadas por PNN+ (Coexpresión)",
-            "mean_pnn_pericellular_wfa_norm": "Intensidad WFA Circundante (Norm 0-1)",
-            "mean_diffuse_wfa_intensity_raw": "Intensidad Media WFA Difuso (Fuera de PNN - Raw)",
-            "diffuse_wfa_fluorescence": "Fluorescencia Difusa WFA (Norm 0-1)"
-        }
-        
-        sel_lup_var = st.selectbox("Seleccionar Métricas Lupori:", list(LUPORI_VARS.keys()), format_func=lambda x: LUPORI_VARS[x], key="lup_var")
+        st.header("🔬 Intensidades y Medias Integradas de Fluorescencia WFA")
+        st.markdown("""
+        * **Media Integrada de Fluorescencia WFA:** Suma total de intensidad de señal WFA condensada en la red perineuronal (Densidad Integrada).
+        * **Intensidad Media WFA en PNN:** Nivel medio de fluorescencia dentro del área de la PNN.
+        * **Intensidad Pericelular:** Fluorescencia específica medida en el anillo perisomático de la red.
+        """)
+        selected_wfa_var = st.selectbox("Variable de Intensidad WFA:", list(INTENSITY_VARS.keys()), format_func=lambda x: INTENSITY_VARS[x], key="wfa_int_var")
 
         if level_type == "Por Célula (distribuciones individuales)":
-            df_lup_base = active_cells_df[active_cells_df['is_pnn_plus'] == True].copy()
-            if 'pnn_energy' not in df_lup_base.columns: df_lup_base['pnn_energy'] = df_lup_base['wfa_pericellular_norm']
-            if 'coloc_energy' not in df_lup_base.columns: df_lup_base['coloc_energy'] = df_lup_base['wfa_pericellular_norm']
-            if 'mean_pnn_pericellular_wfa_norm' not in df_lup_base.columns: df_lup_base['mean_pnn_pericellular_wfa_norm'] = df_lup_base['wfa_pericellular_norm']
+            df_wfa_base = active_cells_df[active_cells_df['is_pnn_plus'] == True].copy()
         elif level_type == "Por Sujeto (animal, promediando cortes)":
-            df_lup_base = df_lup_filtered.groupby(['group', 'section', 'animal_id']).mean(numeric_only=True).reset_index()
-            df_lup_base['sex']       = df_lup_base['group'].map(lambda g: parse_group(g)[0])
-            df_lup_base['condition'] = df_lup_base['group'].map(lambda g: parse_group(g)[1])
+            df_wfa_base = df_subj.copy()
         else:
-            df_lup_base = df_lup_filtered.copy()
+            df_wfa_base = df_img.copy()
 
-        run_stats_layout(df_lup_base, LUPORI_VARS, sel_lup_var, "Métricas Lupori et al.")
-        
-        st.markdown("### 📋 Tabla Completa Consolidada Lupori:")
-        st.dataframe(df_lup_filtered, use_container_width=True)
+        run_stats_layout(df_wfa_base, INTENSITY_VARS, selected_wfa_var, "Intensidades Fluorescentes WFA")
 
-# 4. TAB SEÑAL GLOBAL Y COMPONENTE DIFUSO WFA
-with tab_global_wfa:
-    st.header("🌐 Señal Global y Componente Difuso de WFA")
-    st.markdown("""
-    **Medición de Componentes de Fluorescencia WFA:**
-    * **Intensidad Media WFA Difusa (Raw):** Señal promedio de WFA en todo el tejido o ROI que se encuentra **fuera del círculo de cuantificación de las PNNs** ($m_{\\text{wfa}} = 0$). Mide la matriz extracelular difusa libre de condensaciones perineuronales.
-    * **Fluorescencia Difusa WFA Normalizada:** Señal difusa normalizada respecto a la fluorescencia global del corte ($0\\text{--}1$).
-    * **Intensidad Media WFA Perineuronal (Raw):** Señal promedio de WFA **dentro de los círculos de cuantificación de las PNNs**.
-    * **Ratio de Contraste (PNN / Difuso):** Cociente $\\frac{\\text{Intensidad Media PNN}}{\\text{Intensidad Media Difusa}}$, indicando la definición o nitidez de las redes sobre el fondo.
-    * **Señal Global Integrada WFA ($\sum \\text{Intensidad}$):** Suma total de fluorescencia acumulada de WFA en todo el tejido/ROI.
-    * **Densidad de Señal Integrada por $\\text{mm}^2$:** Intensidad WFA integrada dividida entre el área del preparado o ROI en $\\text{mm}^2$.
-    """)
-
-    df_gwfa_filtered = compute_dynamic_lupori_metrics(valid_images_df, active_cells_df, area_scope)
-
-    if df_gwfa_filtered.empty:
-        st.info("No se encontraron métricas de señal global WFA disponibles.")
+# 4. TAB ESPACIO DIFUSO WFA (DENTRO Y FUERA DEL ROI)
+with tab_diffuse:
+    if df_img.empty:
+        st.info("No hay datos de espacio difuso disponibles.")
     else:
-        GLOBAL_WFA_VARS = {
-            "mean_diffuse_wfa_intensity_raw": "Intensidad Media WFA Difusa (Fuera de Círculos PNN - Raw)",
-            "diffuse_wfa_fluorescence_norm": "Fluorescencia Difusa WFA Normalizada (Norm 0-1)",
-            "mean_pnn_wfa_intensity_raw": "Intensidad Media WFA Perineuronal (Dentro de Círculos PNN - Raw)",
-            "ratio_pnn_to_diffuse": "Ratio de Contraste (Intensidad PNN / Intensidad Difusa)",
-            "total_diffuse_wfa_signal": "Señal Integrada Difusa WFA (Suma Fuera de PNN)",
-            "diffuse_wfa_density_mm2": "Densidad de Señal Difusa WFA por mm²",
-            "total_integrated_wfa_signal": "Señal Global Integrada WFA (Suma Total Tejido)",
-            "integrated_wfa_density_mm2": "Densidad de Señal Integrada WFA por mm²",
-            "mean_wfa_intensity_raw": "Intensidad Media Global WFA (Tejido Completo - Raw)"
-        }
-
-        sel_gwfa_var = st.selectbox("Seleccionar Métrica de Señal Global / Difusa WFA:", list(GLOBAL_WFA_VARS.keys()), format_func=lambda x: GLOBAL_WFA_VARS[x], key="gwfa_var")
+        st.header("🌫️ Espacio Difuso y Neuropilo WFA (Dentro y Fuera del ROI)")
+        st.markdown("""
+        * **Fondo Difuso Dentro del ROI:** Fluorescencia media del neuropilo extracelular libre de somas y condensaciones PNN dentro del área estándar ROI.
+        * **Fondo Difuso Fuera del ROI:** Fluorescencia media del neuropilo en el resto de la corteza.
+        * **Fondo Difuso Global:** Media en todo el corte histológico.
+        * **Ratio Señal PNN / Fondo Difuso:** Contraste y definición de las redes perineuronales sobre el fondo de la matriz.
+        """)
+        selected_diff_var = st.selectbox("Variable de Espacio Difuso WFA:", list(DIFFUSE_VARS.keys()), format_func=lambda x: DIFFUSE_VARS[x], key="diff_var")
 
         if level_type == "Por Célula (distribuciones individuales)":
-            df_gwfa_base = active_cells_df.copy()
-            for k in GLOBAL_WFA_VARS.keys():
-                if k not in df_gwfa_base.columns and k in df_gwfa_filtered.columns:
-                    mapping = df_gwfa_filtered.set_index('image_name')[k].to_dict()
-                    df_gwfa_base[k] = df_gwfa_base['image_name'].map(mapping)
+            df_diff_base = active_cells_df.copy()
+            for k in DIFFUSE_VARS.keys():
+                if k not in df_diff_base.columns and k in df_img.columns:
+                    mapping = df_img.set_index('image_name')[k].to_dict()
+                    df_diff_base[k] = df_diff_base['image_name'].map(mapping)
         elif level_type == "Por Sujeto (animal, promediando cortes)":
-            df_gwfa_base = df_gwfa_filtered.groupby(['group', 'section', 'animal_id']).mean(numeric_only=True).reset_index()
-            df_gwfa_base['sex']       = df_gwfa_base['group'].map(lambda g: parse_group(g)[0])
-            df_gwfa_base['condition'] = df_gwfa_base['group'].map(lambda g: parse_group(g)[1])
+            df_diff_base = df_subj.copy()
         else:
-            df_gwfa_base = df_gwfa_filtered.copy()
+            df_diff_base = df_img.copy()
 
-        run_stats_layout(df_gwfa_base, GLOBAL_WFA_VARS, sel_gwfa_var, "Señal Global y Difusa WFA")
+        run_stats_layout(df_diff_base, DIFFUSE_VARS, selected_diff_var, "Espacio Difuso WFA")
 
-        st.markdown("### 📋 Tabla Consolidada de Señal Global y Difusa WFA:")
-        st.dataframe(df_gwfa_filtered, use_container_width=True)
+        st.markdown("### 📋 Resumen Consolidado de Espacio Difuso y Ratios por Preparado:")
+        cols_show = ['group', 'section', 'image_name', 'wfa_diffuse_mean_roi', 'wfa_diffuse_mean_outside_roi', 'wfa_diffuse_mean_global', 'wfa_signal_to_diffuse_ratio_roi', 'wfa_signal_to_diffuse_ratio_global']
+        cols_present = [c for c in cols_show if c in df_img.columns]
+        st.dataframe(df_img[cols_present], use_container_width=True)
+        st.download_button(
+            "📥 Descargar Datos de Espacio Difuso (.csv)",
+            data=df_img[cols_present].to_csv(index=False).encode('utf-8'),
+            file_name="espacio_difuso_wfa_roi_global.csv",
+            mime="text/csv",
+            key="dl_diffuse_wfa_csv"
+        )

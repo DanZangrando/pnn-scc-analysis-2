@@ -110,15 +110,43 @@ px_size = st.sidebar.number_input(
     help="Resolución física del microscopio. Se actualiza automáticamente al detectar metadatos CZI."
 )
 
-filter_options = ["Ninguno", "Otsu Global", "CLAHE (Adaptativo Local)"]
+filter_options = [
+    "Ninguno (Raw)",
+    "CLAHE (Adaptativo Local)",
+    "Percentil Robusto (1-99.5%)",
+    "Sustracción de Fondo (Top-hat)",
+    "Filtro Gaussiano (Denoising)",
+    "Otsu Global"
+]
 
-with st.sidebar.expander("🧪 Parámetros Cellpose (PV)"):
+cellpose_models_list = ["cpsam_v2", "cyto3", "cyto2", "cyto", "neuronet"]
+
+with st.sidebar.expander("🧪 Parámetros Cellpose (PV+)", expanded=True):
     do_pv = st.checkbox("Activar segmentación PV", value=calib_data.get('do_pv_segmentation', True))
-    pv_def_filter = calib_data.get('pv_cellpose_filter_type', "Ninguno")
-    pv_filter = st.selectbox("Filtro PV", filter_options, index=filter_options.index(pv_def_filter) if pv_def_filter in filter_options else 0)
-    pv_diam = st.number_input("Diámetro PV (px)", value=float(calib_data.get('pv_cellpose_diameter', 30.0)), step=1.0)
-    pv_flow = st.slider("Flow Threshold (PV)", 0.0, 1.0, float(calib_data.get('pv_cellpose_flow_threshold', 0.4)))
-    pv_prob = st.slider("Cell Prob Threshold (PV)", -6.0, 6.0, float(calib_data.get('pv_cellpose_cellprob_threshold', 0.0)))
+    
+    pv_model_def = calib_data.get('pv_cellpose_model', 'cpsam_v2')
+    idx_model = cellpose_models_list.index(pv_model_def) if pv_model_def in cellpose_models_list else 0
+    pv_model = st.selectbox("Modelo Cellpose PV", cellpose_models_list, index=idx_model, help="cpsam_v2 (SAM v2, recomendado), cyto3, cyto2, cyto (clásico) o neuronet (específico neuronal).")
+    
+    pv_def_filter = calib_data.get('pv_cellpose_filter_type', "Ninguno (Raw)")
+    idx_filter = filter_options.index(pv_def_filter) if pv_def_filter in filter_options else 0
+    pv_filter = st.selectbox("Filtro / Realce previo PV", filter_options, index=idx_filter)
+    
+    c_p1, c_p2 = st.columns(2)
+    with c_p1:
+        pv_clahe_clip = st.slider("CLAHE Clip", 0.005, 0.08, float(calib_data.get('pv_clahe_clip', 0.02)), step=0.005)
+    with c_p2:
+        pv_gamma = st.slider("Gamma PV", 0.4, 2.0, float(calib_data.get('pv_gamma', 1.0)), step=0.1)
+
+    pv_diam = st.number_input("Diámetro Soma PV (px)", value=float(calib_data.get('pv_cellpose_diameter', 20.0)), step=1.0, help="Diámetro estimado en píxeles. A 10x (0.89 µm/px), un soma de 18 µm equivale a ~20 px.")
+    pv_flow = st.slider("Flow Error Threshold (PV)", 0.0, 1.5, float(calib_data.get('pv_cellpose_flow_threshold', 0.8)), step=0.05, help="Controla la tolerancia al gradiente. 0.8-1.0 rescata somas irregulares/ramificados; 0.4 es restrictivo.")
+    pv_prob = st.slider("Cell Prob Threshold (PV)", -6.0, 6.0, float(calib_data.get('pv_cellpose_cellprob_threshold', -1.5)), step=0.1, help="Umbral de detección. Valores negativos (-1.0 a -2.5) capturan neuronas tenues; valores positivos son más estrictos.")
+    
+    c_m1, c_m2 = st.columns(2)
+    with c_m1:
+        pv_min_size = st.number_input("Área Mínima (px)", min_value=5, max_value=200, value=int(calib_data.get('pv_cellpose_min_size', 15)), step=5)
+    with c_m2:
+        pv_resample = st.checkbox("Resample (Alta Res)", value=bool(calib_data.get('pv_cellpose_resample', True)))
 
 with st.sidebar.expander("🧠 Parámetros PNNloc / PNNscore"):
     default_pnn_rad = float(calib_data.get('pnn_radius_um', 20.0))
@@ -130,7 +158,13 @@ with st.sidebar.expander("🧠 Parámetros PNNloc / PNNscore"):
     if default_score_val < -3.0 or default_score_val > 3.0:
         default_score_val = -1.0
     score_threshold = st.slider("Umbral Score (PNNscore)", -3.0, 3.0, default_score_val, step=0.05, help="Puntuación continua (logit) del modelo ConvNet. Valores entre -1.5 y 0.0 rescatan PNNs tenues.")
-    min_peak_dist = st.slider("Distancia mín PNNs (px)", 10, 80, int(calib_data.get('lupori_min_peak_dist', 60)), step=5)
+    
+    use_min_pnn_dist = st.checkbox("Filtrar por Distancia Mínima entre PNNs", value=bool(calib_data.get('use_min_pnn_dist', False)), help="Activa la supresión de detecciones duplicadas o centros redundantes muy cercanos.")
+    if use_min_pnn_dist:
+        min_pnn_dist_px = st.slider("Distancia mínima entre PNNs (px)", 5, 120, int(calib_data.get('min_pnn_dist_px', 30)), step=5, help="Si dos detecciones están a una distancia menor, se conserva la de mayor puntaje.")
+    else:
+        min_pnn_dist_px = 0
+
     tile_size = st.select_slider("Tamaño tile (px)", options=[256, 512, 640, 1024, 2048], value=int(calib_data.get('lupori_tile_size', 640)))
     tile_overlap = st.slider("Overlap tiles (px)", 16, 128, int(calib_data.get('lupori_tile_overlap', 64)), step=16)
 
@@ -151,13 +185,19 @@ if st.sidebar.button("💾 Guardar Configuración Global"):
         'pixel_size_um': px_size,
         'pnn_radius_um': pnn_radius_um,
         'do_pv_segmentation': do_pv,
+        'pv_cellpose_model': pv_model,
         'pv_cellpose_filter_type': pv_filter,
+        'pv_clahe_clip': pv_clahe_clip,
+        'pv_gamma': pv_gamma,
         'pv_cellpose_diameter': pv_diam,
         'pv_cellpose_flow_threshold': pv_flow,
         'pv_cellpose_cellprob_threshold': pv_prob,
+        'pv_cellpose_min_size': pv_min_size,
+        'pv_cellpose_resample': pv_resample,
         'lupori_loc_threshold': loc_threshold,
         'lupori_score_threshold': score_threshold,
-        'lupori_min_peak_dist': min_peak_dist,
+        'use_min_pnn_dist': use_min_pnn_dist,
+        'min_pnn_dist_px': min_pnn_dist_px,
         'lupori_tile_size': tile_size,
         'lupori_tile_overlap': tile_overlap,
         'wfa_norm_method': wfa_norm_method,
@@ -259,7 +299,7 @@ st.divider()
 st.markdown("""
 <div class="roi-highlight-box">
 <h3 style="margin-top:0; color:#818cf8;">🎨 2. Herramienta de ROIs y Visor Interactivo Napari</h3>
-<p style="color:#cbd5e1; margin-bottom:15px;">Dibuja, edita y gestiona polígonos sobre 3 capas de regiones independientes (<b>Región A</b>, <b>Región B</b> y <b>Región C</b>) directamente en Napari sobre la imagen MIP.</p>
+<p style="color:#cbd5e1; margin-bottom:15px;">Gestiona la <b>ROI Estandarizada</b> (área fija de <b>0.348 mm²</b>). Ábrela en Napari para moverla o rotarla sobre la región exacta de corteza a medir sin alterar sus dimensiones.</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -270,43 +310,29 @@ if groups and selected_file:
     if os.path.exists(seg_roi_path):
         target_napari_path = seg_roi_path
 
-    # Check ROI status
+    # Check ROI status using src/roi.py
+    from roi import load_roi_details, check_all_rois_consistency, propagate_template_rois_all, STANDARD_ROI_AREA_MM2
     roi_json_path = os.path.join(METRICS_BASE_DIR, selected_group, selected_section, f"{base_roi}_rois.json")
-    n_rois_total = 0
-    roi_area_mm2 = 0.0
-    reg_info = []
-    if os.path.exists(roi_json_path):
-        try:
-            with open(roi_json_path, 'r') as f_roi:
-                roi_data = json.load(f_roi)
-                n_rois_total = roi_data.get("n_rois_total", 0)
-                if n_rois_total == 0:
-                    n_rois_total = roi_data.get("n_rois", 0)
-                roi_area_mm2 = roi_data.get("total_roi_area_mm2", 0.0)
-                meta = roi_data.get("regions_metadata", {})
-                for r in ["A", "B", "C"]:
-                    m_r = meta.get(r, {})
-                    nr = m_r.get("n_rois", 0)
-                    if nr > 0:
-                        reg_info.append(f"Región {r}: {nr}")
-        except Exception:
-            pass
+    regs, is_adj, roi_area_mm2, updated_at = load_roi_details(roi_json_path)
+    n_rois_total = len(regs.get("ROI", []))
 
     if n_rois_total > 0:
-        detail = " | ".join(reg_info) if reg_info else f"{n_rois_total} polígonos"
-        st.success(f"🎯 **ROIs Guardadas ({detail}):** Área total ROI: {roi_area_mm2:.4f} mm²")
+        if is_adj:
+            st.success(f"🎯 **Estado: ✅ ROI Ajustada y Validada** | Área ROI: **{roi_area_mm2:.4f} mm²** ({(roi_area_mm2 * 1e6):,.0f} µm²) | Actualizado: {updated_at}")
+        else:
+            st.warning(f"🎯 **Estado: ⏳ Plantilla Predeterminada (Pendiente de ajustar posición/rotación)** | Área ROI: **{roi_area_mm2:.4f} mm²** ({(roi_area_mm2 * 1e6):,.0f} µm²)")
     else:
-        st.info("ℹ️ **Sin ROIs trazadas aún.** Presiona el botón inferior para abrir Napari y dibujar polígonos en la Región A, B o C.")
+        st.info("ℹ️ **Sin ROI trazada aún.** Presiona el botón inferior para abrir Napari y posicionar la ROI estandarizada.")
 
     btn_r1, btn_r2 = st.columns(2)
     with btn_r1:
-        if st.button("🎯 Abrir y Dibujar ROIs en Napari (Regiones A, B, C)", type="primary", use_container_width=True, key="btn_main_edit_roi"):
+        if st.button("🎯 Abrir y Posicionar ROI en Napari", type="primary", use_container_width=True, key="btn_main_edit_roi"):
             cmd = [sys.executable, "src/napari_viewer.py", "--path", target_napari_path, "--pixel_size", str(px_size), "--edit-roi"]
             try:
                 env = os.environ.copy()
                 env["DISPLAY"] = os.environ.get("DISPLAY", ":0")
                 subprocess.Popen(cmd, env=env)
-                st.success("✅ Visor Napari abierto en modo edición de ROIs. Traza los polígonos y presiona Ctrl+S para guardar.")
+                st.success("✅ Visor Napari abierto. Puedes mover o rotar la ROI seleccionada y presionar Ctrl+S para guardar.")
             except Exception as e:
                 st.error(f"Error lanzando Napari: {e}")
 
@@ -320,6 +346,33 @@ if groups and selected_file:
                 st.success("✅ Visor Napari de canales lanzado.")
             except Exception as e:
                 st.error(f"Error lanzando Napari: {e}")
+
+    # Global consistency and tracking tool
+    with st.expander("🛠️ Gestión Global y Check de Consistencia de ROIs del Experimento", expanded=False):
+        df_rep, summary = check_all_rois_consistency(all_tasks, ref_area_mm2=STANDARD_ROI_AREA_MM2)
+        
+        c_k1, c_k2, c_k3, c_k4 = st.columns(4)
+        c_k1.metric("📐 Área Referencia ROI", f"{summary['ref_area_mm2']:.4f} mm²")
+        c_k2.metric("✅ ROIs Ajustadas", f"{summary['adjusted_imgs']} / {summary['total_imgs']}", f"{summary['pct_adjusted']:.1f}%")
+        c_k3.metric("⏳ Pendientes de Ajuste", f"{summary['template_imgs']}")
+        c_k4.metric("⚖️ Consistencia de Tamaño", f"{summary['pct_consistent']:.1f}% idénticas")
+
+        col_act1, col_act2 = st.columns(2)
+        with col_act1:
+            if st.button("🔄 Propagar Plantilla Estandarizada a Pendientes", key="btn_prop_pending"):
+                c_created, c_skip = propagate_template_rois_all(all_tasks, force=False, pixel_size_um=px_size)
+                st.success(f"✅ Se propagó la ROI estandarizada a {c_created} imágenes (se respetaron {c_skip} ya ajustadas).")
+                st.rerun()
+        with col_act2:
+            st.download_button(
+                "📥 Descargar Reporte de Consistencia de ROIs (.csv)",
+                data=df_rep.to_csv(index=False).encode('utf-8'),
+                file_name="reporte_consistencia_rois.csv",
+                mime="text/csv",
+                key="dl_roi_consistency_rep"
+            )
+
+        st.dataframe(df_rep[['group', 'section', 'filename', 'status', 'area_mm2', 'is_consistent', 'updated_at']], use_container_width=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PASO 3: ANÁLISIS DE LA MUESTRA SELECCIONADA
@@ -398,15 +451,23 @@ if st.button("▶️ Procesar Todo el Experimento en Batch", type="primary", key
     calib_data.update({
         'pixel_size_um': px_size,
         'do_pv_segmentation': do_pv,
+        'pv_cellpose_model': pv_model,
         'pv_cellpose_filter_type': pv_filter,
+        'pv_clahe_clip': pv_clahe_clip,
+        'pv_gamma': pv_gamma,
         'pv_cellpose_diameter': pv_diam,
         'pv_cellpose_flow_threshold': pv_flow,
         'pv_cellpose_cellprob_threshold': pv_prob,
+        'pv_cellpose_min_size': pv_min_size,
+        'pv_cellpose_resample': pv_resample,
         'lupori_loc_threshold': loc_threshold,
         'lupori_score_threshold': score_threshold,
-        'lupori_min_peak_dist': min_peak_dist,
+        'use_min_pnn_dist': use_min_pnn_dist,
+        'min_pnn_dist_px': min_pnn_dist_px,
         'lupori_tile_size': tile_size,
         'lupori_tile_overlap': tile_overlap,
+        'wfa_norm_method': wfa_norm_method,
+        'wfa_gamma': wfa_gamma,
         'channels': ["AGR", "DAPI", "WFA", "PV"]
     })
     save_config(calib_data)

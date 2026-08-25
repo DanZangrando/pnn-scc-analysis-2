@@ -7,12 +7,16 @@ pnn_pkg_path = os.path.abspath("src/counting_perineuronal_nets")
 if pnn_pkg_path not in sys.path:
     sys.path.insert(0, pnn_pkg_path)
 
-def load_models():
+def load_models(pv_model_name='cpsam_v2'):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Cargando modelos de IA en dispositivo: {device}")
+    print(f"Cargando modelos de IA en dispositivo: {device} (Cellpose PV: {pv_model_name})")
 
     # Cellpose PV Model
-    model_pv = cellpose_models.CellposeModel(gpu=torch.cuda.is_available())
+    try:
+        model_pv = cellpose_models.CellposeModel(gpu=torch.cuda.is_available(), pretrained_model=pv_model_name)
+    except Exception as e_m:
+        print(f"Advertencia al cargar modelo Cellpose '{pv_model_name}': {e_m}. Usando cpsam_v2 por defecto.")
+        model_pv = cellpose_models.CellposeModel(gpu=torch.cuda.is_available(), pretrained_model='cpsam_v2')
 
     # PNNloc (Faster R-CNN)
     from models.FasterRCNN import FasterRCNNWrapper

@@ -90,13 +90,13 @@ if selected_filename.lower().endswith('.czi') or "data/raw" in selected_path:
     except Exception as e:
         st.warning(f"Generando MIP: {e}")
 
-if st.sidebar.button("🎯 Abrir / Dibujar ROIs en Napari", type="primary", key="p2_btn_roi"):
+if st.sidebar.button("🎯 Posicionar / Mover ROI en Napari", type="primary", key="p2_btn_roi"):
     cmd = [sys.executable, "src/napari_viewer.py", "--path", selected_path, "--pixel_size", str(calib_data.get('pixel_size_um', 0.8913)), "--edit-roi"]
     try:
         env = os.environ.copy()
         env["DISPLAY"] = os.environ.get("DISPLAY", ":0")
         subprocess.Popen(cmd, env=env)
-        st.sidebar.success("✅ Visor Napari lanzado.")
+        st.sidebar.success("✅ Visor Napari lanzado. Mueve o rota la ROI y presiona Ctrl+S para guardar.")
     except Exception as e:
         st.sidebar.error(f"Error abriendo Napari: {e}")
 
@@ -116,12 +116,43 @@ except Exception as e:
 # Sidebar - Cellpose PV Parameters
 st.sidebar.header("⚙️ Ajustes de Cellpose PV")
 use_gpu = st.sidebar.checkbox("Usar GPU (PyTorch)", value=True, key="p2_gpu")
-filter_options = ["Ninguno", "Otsu Global", "CLAHE (Adaptativo Local)"]
-pv_def_filter = calib_data.get('pv_cellpose_filter_type', "Ninguno")
-pv_filter = st.selectbox("Filtro previo PV", filter_options, index=filter_options.index(pv_def_filter) if pv_def_filter in filter_options else 0, key="p2_filter")
-pv_diam = st.number_input("Diámetro de PV (px)", value=float(calib_data.get('pv_cellpose_diameter', 30.0)), key="p2_diam", step=1.0)
-pv_flow = st.slider("Flow Threshold PV", 0.0, 1.0, float(calib_data.get('pv_cellpose_flow_threshold', 0.4)), key="p2_flow")
-pv_prob = st.slider("Cell Prob Threshold PV", -6.0, 6.0, float(calib_data.get('pv_cellpose_cellprob_threshold', 0.0)), key="p2_prob")
+
+cellpose_models_list = ["cpsam_v2", "cyto3", "cyto2", "cyto", "neuronet"]
+pv_model_def = calib_data.get('pv_cellpose_model', 'cpsam_v2')
+idx_model = cellpose_models_list.index(pv_model_def) if pv_model_def in cellpose_models_list else 0
+pv_model = st.sidebar.selectbox("Modelo Cellpose PV", cellpose_models_list, index=idx_model, key="p2_model",
+                               help="cpsam_v2 (SAM v2, recomendado), cyto3, cyto2, cyto (clásico) o neuronet (específico neuronal).")
+
+filter_options = [
+    "Ninguno (Raw)",
+    "CLAHE (Adaptativo Local)",
+    "Percentil Robusto (1-99.5%)",
+    "Sustracción de Fondo (Top-hat)",
+    "Filtro Gaussiano (Denoising)",
+    "Otsu Global"
+]
+pv_def_filter = calib_data.get('pv_cellpose_filter_type', "Ninguno (Raw)")
+idx_filter = filter_options.index(pv_def_filter) if pv_def_filter in filter_options else 0
+pv_filter = st.sidebar.selectbox("Filtro / Realce previo PV", filter_options, index=idx_filter, key="p2_filter")
+
+c_p1, c_p2 = st.sidebar.columns(2)
+with c_p1:
+    pv_clahe_clip = st.slider("CLAHE Clip", 0.005, 0.08, float(calib_data.get('pv_clahe_clip', 0.02)), step=0.005, key="p2_clip")
+with c_p2:
+    pv_gamma = st.slider("Gamma PV", 0.4, 2.0, float(calib_data.get('pv_gamma', 1.0)), step=0.1, key="p2_gamma")
+
+pv_diam = st.sidebar.number_input("Diámetro Soma PV (px)", value=float(calib_data.get('pv_cellpose_diameter', 20.0)), key="p2_diam", step=1.0,
+                                  help="A 10x (0.89 µm/px), un soma de 18 µm equivale a ~20 px.")
+pv_flow = st.sidebar.slider("Flow Error Threshold PV", 0.0, 1.5, float(calib_data.get('pv_cellpose_flow_threshold', 0.8)), step=0.05, key="p2_flow",
+                            help="Valores más altos (0.8-1.0) permiten detectar somas irregulares/ramificados sin descartarlos por gradiente.")
+pv_prob = st.sidebar.slider("Cell Prob Threshold PV", -6.0, 6.0, float(calib_data.get('pv_cellpose_cellprob_threshold', -1.5)), step=0.1, key="p2_prob",
+                            help="Valores negativos (-1.0 a -2.5) capturan neuronas PV+ tenues o moderadas.")
+
+c_m1, c_m2 = st.sidebar.columns(2)
+with c_m1:
+    pv_min_size = st.number_input("Área Mín (px)", min_value=5, max_value=200, value=int(calib_data.get('pv_cellpose_min_size', 15)), step=5, key="p2_min_size")
+with c_m2:
+    pv_resample = st.checkbox("Resample Alta Res", value=bool(calib_data.get('pv_cellpose_resample', True)), key="p2_resample")
 
 px_size = float(calib_data.get('pixel_size_um', 1.0))
 
@@ -136,28 +167,34 @@ json_file = os.path.join(METRICS_DIR, f"{base_fn}_summary.json")
 if run_btn:
     # Save parameters to global configuration
     calib_data.update({
+        'pv_cellpose_model': pv_model,
         'pv_cellpose_filter_type': pv_filter,
+        'pv_clahe_clip': pv_clahe_clip,
+        'pv_gamma': pv_gamma,
         'pv_cellpose_diameter': pv_diam,
         'pv_cellpose_flow_threshold': pv_flow,
         'pv_cellpose_cellprob_threshold': pv_prob,
+        'pv_cellpose_min_size': pv_min_size,
+        'pv_cellpose_resample': pv_resample,
         'do_pv_segmentation': True
     })
     with open(CONFIG_PATH, 'w') as f:
         json.dump(calib_data, f, indent=4)
         
-    with st.spinner("Ejecutando segmentación Cellpose para PV..."):
+    with st.spinner("Ejecutando segmentación Cellpose para PV con parámetros avanzados..."):
         try:
-            in_pv = pv_raw.copy()
-            if pv_filter == "Otsu Global":
-                t = threshold_otsu(in_pv)
-                in_pv[in_pv < t] = 0
-            elif pv_filter == "CLAHE (Adaptativo Local)":
-                clahe = exposure.equalize_adapthist(in_pv, clip_limit=0.03)
-                in_pv = (clahe * 65535).astype(np.uint16)
+            from pipeline_runner import preprocess_pv_for_segmentation
+            in_pv = preprocess_pv_for_segmentation(pv_raw, method=pv_filter, clahe_clip=pv_clahe_clip, gamma=pv_gamma)
                 
-            model_pv = models.CellposeModel(gpu=use_gpu)
-            m_pv, _, _ = model_pv.eval(in_pv, diameter=pv_diam, 
-                                        flow_threshold=pv_flow, cellprob_threshold=pv_prob)
+            model_pv = models.CellposeModel(gpu=use_gpu, pretrained_model=pv_model)
+            m_pv, _, _ = model_pv.eval(
+                in_pv,
+                diameter=pv_diam if pv_diam > 0 else None, 
+                flow_threshold=pv_flow,
+                cellprob_threshold=pv_prob,
+                min_size=pv_min_size,
+                resample=pv_resample
+            )
             
             # Load or create segmented stack TIFF
             m_dapi = np.zeros_like(m_pv)

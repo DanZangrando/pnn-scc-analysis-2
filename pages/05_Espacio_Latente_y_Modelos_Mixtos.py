@@ -217,10 +217,9 @@ def load_all_dataset(_hash=None):
             roi_file = get_roi_json_path(metrics_dir, fname)
 
         regions_dict = load_rois(roi_file)
-        has_a = len(regions_dict.get('A', [])) > 0
-        has_b = len(regions_dict.get('B', [])) > 0
-        has_c = len(regions_dict.get('C', [])) > 0
-        has_any = (has_a or has_b or has_c)
+        has_roi = len(regions_dict.get('ROI', [])) > 0 or len(regions_dict.get('B', [])) > 0
+        from roi import load_roi_details
+        _, is_adj, roi_area_mm2, _ = load_roi_details(roi_file) if os.path.exists(roi_file) else ({}, False, 0.0, "")
 
         animal_id = extract_animal_id(fname)
         m2 = re.search(r'~(\d+)$', fname)
@@ -229,8 +228,11 @@ def load_all_dataset(_hash=None):
         image_catalog.append({
             'group': group, 'section': sec, 'image_name': fname, 'base_name': base_name,
             'animal_id': animal_id, 'corte_num': corte_num,
-            'has_roi_a': has_a, 'has_roi_b': has_b, 'has_roi_c': has_c,
-            'has_roi_any': has_any
+            'has_roi': has_roi,
+            'has_roi_b': has_roi,
+            'has_roi_any': has_roi,
+            'is_roi_adjusted': is_adj,
+            'roi_area_mm2': roi_area_mm2
         })
 
         if os.path.exists(csv_file):
@@ -244,8 +246,8 @@ def load_all_dataset(_hash=None):
                     df_c['corte_num']  = corte_num
                     
                     coords = df_c[['centroid_y', 'centroid_x']].values
-                    df_c['is_in_roi']  = points_in_rois(coords, regions_dict, target_region='ALL') if has_any else False
-                    df_c['roi_region'] = get_point_region_assignment(coords, regions_dict) if has_any else 'NONE'
+                    df_c['is_in_roi']  = points_in_rois(coords, regions_dict) if has_roi else False
+                    df_c['roi_region'] = get_point_region_assignment(coords, regions_dict) if has_roi else 'NONE'
                     all_cells.append(df_c)
             except Exception:
                 pass
@@ -277,36 +279,19 @@ if st.sidebar.button("🔄 Recargar Datos del Disco", key="ae_reload_btn"):
     st.cache_data.clear()
     st.rerun()
 
-st.sidebar.subheader("🎯 Filtros Poblacionales de Muestra")
-
-area_scope = st.sidebar.radio(
-    "Área de Cuantificación / ROIs:",
+loc_scope = st.sidebar.radio(
+    "Localización Celular:",
     [
-        "🌐 Toda la Imagen (Global)",
-        "🎯 Todas las ROIs (A, B y C combinadas)",
-        "🅰️ Solo Región A",
-        "🅱️ Solo Región B",
-        "🅒 Solo Región C"
+        "🌐 Todas las Células (Global)",
+        "🎯 Solo Células en ROI (Estandarizada)"
     ],
     index=0,
-    key="ae_area_scope"
+    key="ae_loc_scope"
 )
 
-# 1. Apply ROI Filter
-if area_scope == "🎯 Todas las ROIs (A, B y C combinadas)":
-    valid_images_df = df_all_images[df_all_images['has_roi_any'] == True].copy()
-    active_cells_df = df_raw_cells[(df_raw_cells['is_in_roi'] == True) & (df_raw_cells['image_name'].isin(valid_images_df['image_name']))].copy()
-elif area_scope == "🅰️ Solo Región A":
-    valid_images_df = df_all_images[df_all_images['has_roi_a'] == True].copy()
-    active_cells_df = df_raw_cells[(df_raw_cells['roi_region'] == 'A') & (df_raw_cells['image_name'].isin(valid_images_df['image_name']))].copy()
-elif area_scope == "🅱️ Solo Región B":
-    valid_images_df = df_all_images[df_all_images['has_roi_b'] == True].copy()
-    active_cells_df = df_raw_cells[(df_raw_cells['roi_region'] == 'B') & (df_raw_cells['image_name'].isin(valid_images_df['image_name']))].copy()
-elif area_scope == "🅒 Solo Región C":
-    valid_images_df = df_all_images[df_all_images['has_roi_c'] == True].copy()
-    active_cells_df = df_raw_cells[(df_raw_cells['roi_region'] == 'C') & (df_raw_cells['image_name'].isin(valid_images_df['image_name']))].copy()
+if "ROI" in loc_scope:
+    active_cells_df = df_raw_cells[df_raw_cells['is_in_roi'] == True].copy()
 else:
-    valid_images_df = df_all_images.copy()
     active_cells_df = df_raw_cells.copy()
 
 # Add group metadata annotations
@@ -631,10 +616,13 @@ with tab_lmm:
     """)
 
     LMM_VARS = {
+        "wfa_sum_intensity": "Densidad Integrada Fluorescencia WFA (Suma)",
+        "wfa_mean_intensity": "Intensidad Media Fluorescencia WFA en PNN",
         "wfa_pericellular_norm": "Intensidad Circundante WFA Normalizada (Norm 0-1)",
-        "wfa_mean_intensity": "Intensidad Media WFA Raw",
-        "pnn_area_um2": "Área de PNN (µm²)",
+        "pnn_area_um2": "Área de Malla PNN (µm²)",
+        "pnn_diameter_um": "Diámetro de Malla PNN (µm)",
         "pv_area_um2": "Área Soma PV+ (µm²)",
+        "pv_diameter_um": "Diámetro Soma PV+ (µm)",
         "score": "Confianza PNNscore (IA)"
     }
 

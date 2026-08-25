@@ -127,13 +127,13 @@ if selected_filename.lower().endswith('.czi') or "data/raw" in selected_path:
     except Exception as e:
         st.warning(f"Generando MIP: {e}")
 
-if st.sidebar.button("🎯 Abrir / Dibujar ROIs en Napari", type="primary", key="p3_btn_roi"):
+if st.sidebar.button("🎯 Posicionar / Mover ROI en Napari", type="primary", key="p3_btn_roi"):
     cmd = [sys.executable, "src/napari_viewer.py", "--path", selected_path, "--pixel_size", str(calib_data.get('pixel_size_um', 0.8913)), "--edit-roi"]
     try:
         env = os.environ.copy()
         env["DISPLAY"] = os.environ.get("DISPLAY", ":0")
         subprocess.Popen(cmd, env=env)
-        st.sidebar.success("✅ Visor Napari lanzado.")
+        st.sidebar.success("✅ Visor Napari lanzado. Mueve o rota la ROI y presiona Ctrl+S para guardar.")
     except Exception as e:
         st.sidebar.error(f"Error abriendo Napari: {e}")
 
@@ -191,7 +191,12 @@ else:
         help="El modelo ConvNet genera puntuaciones continuas (logits). Valores negativos como -0.8 o -1.0 permiten aceptar PNNs con tinción más tenue o heterogénea."
     )
 
-min_peak_dist = st.sidebar.slider("Distancia mínima entre PNNs (px)", 10, 80, int(calib_data.get('lupori_min_peak_dist', 30)), step=5)
+use_min_pnn_dist = st.sidebar.checkbox("Filtrar por Distancia Mínima entre PNNs", value=bool(calib_data.get('use_min_pnn_dist', False)), help="Activa la supresión de detecciones duplicadas o centros redundantes muy cercanos.")
+if use_min_pnn_dist:
+    min_pnn_dist_px = st.sidebar.slider("Distancia mínima entre PNNs (px)", 5, 120, int(calib_data.get('min_pnn_dist_px', 30)), step=5, help="Si dos detecciones están a una distancia menor, se conserva la que tenga mayor puntaje IA.")
+else:
+    min_pnn_dist_px = 0
+
 tile_size = st.sidebar.select_slider("Tamaño de tile (px)", options=[256, 512, 640, 1024, 2048], value=int(calib_data.get('lupori_tile_size', 640)))
 tile_overlap = st.sidebar.slider("Overlap entre tiles (px)", 16, 128, int(calib_data.get('lupori_tile_overlap', 32)), step=16)
 soma_erosion_um = st.sidebar.slider("Erosión de Soma (µm)", 0.0, 4.0, float(calib_data.get('soma_erosion_um', 1.5)), step=0.1)
@@ -237,7 +242,8 @@ if run_btn:
         'pnn_radius_um': pnn_radius_um,
         'lupori_loc_threshold': loc_threshold,
         'lupori_score_threshold': score_threshold,
-        'lupori_min_peak_dist': min_peak_dist,
+        'use_min_pnn_dist': use_min_pnn_dist,
+        'min_pnn_dist_px': min_pnn_dist_px,
         'lupori_tile_size': tile_size,
         'lupori_tile_overlap': tile_overlap,
         'soma_erosion_um': soma_erosion_um,

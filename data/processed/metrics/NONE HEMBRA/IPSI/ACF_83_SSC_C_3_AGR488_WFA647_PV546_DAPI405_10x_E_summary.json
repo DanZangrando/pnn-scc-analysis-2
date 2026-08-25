@@ -1,14 +1,14 @@
 {
-  "total_pv_segmentation": 863,
+  "total_pv_segmentation": 784,
   "total_pnn_plus": 372,
-  "pv_pnn_plus": 251,
-  "hollow_pnn_plus": 121,
+  "pv_pnn_plus": 248,
+  "hollow_pnn_plus": 124,
   "image_area_mm2": 4.42991212838235,
   "pnn_density_mm2": 83.97457764830236,
-  "pnn_energy": 3.738625224176869,
-  "coloc_energy": 3.6649404097783096,
-  "mean_pnn_pericellular_wfa_norm": 3.738625224176869,
-  "diffuse_wfa_fluorescence": 0.9178145960275732,
-  "pct_pv_surrounded_by_pnn": 29.08458864426419,
+  "pnn_energy": 3.224884025964063,
+  "coloc_energy": 2.976303079327744,
+  "mean_pnn_pericellular_wfa_norm": 3.224884025964063,
+  "diffuse_wfa_fluorescence": 0.8899714292396551,
+  "pct_pv_surrounded_by_pnn": 31.63265306122449,
   "pixel_size": 0.8913
 }

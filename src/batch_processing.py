@@ -24,7 +24,8 @@ def main():
             calib_data = json.load(f)
 
     px_size = float(calib_data.get("pixel_size_um", 0.8913))
-    model_pv, model_loc, model_score, device = load_models()
+    pv_model_name = calib_data.get("pv_cellpose_model", "cpsam_v2")
+    model_pv, model_loc, model_score, device = load_models(pv_model_name=pv_model_name)
 
     groups = sorted([d for d in os.listdir(RAW_BASE) if os.path.isdir(os.path.join(RAW_BASE, d)) and not d.startswith('.')])
     print(f"Grupos encontrados: {groups}")
