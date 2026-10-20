@@ -120,6 +120,15 @@ def main():
                     if np.max(m_pnn_hollow) > 0:
                         viewer.add_labels(m_pnn_hollow, name="🔴 PNNs PV- (Huecas PV-/PNN+)", scale=scale, opacity=0.65, visible=False)
 
+                    # Create dedicated mask for PV+ somas/nuclei that belong to a PNN (PV+/PNN+)
+                    pv_coloc_labels = set(df_coloc['pv_label'].dropna().astype(int))
+                    pv_coloc_labels.discard(-1)
+                    m_pv_soma_coloc = np.zeros_like(m_pv, dtype=np.uint16)
+                    for p_lbl in pv_coloc_labels:
+                        m_pv_soma_coloc[m_pv == p_lbl] = p_lbl
+                    if np.max(m_pv_soma_coloc) > 0:
+                        viewer.add_labels(m_pv_soma_coloc, name="🔬 Somas PV+ con PNN (PV+/PNN+ Confirmados)", scale=scale, opacity=0.8, visible=True)
+
                     # Add Centroid Points
                     if not df_coloc.empty:
                         pts_coloc = df_coloc[['centroid_y', 'centroid_x']].values

@@ -1,0 +1,85 @@
+{
+  "metadata_general": {
+    "proyecto": "PNN-SCC-ANALYSIS (Corteza Somatosensorial)",
+    "fecha_exportacion": "2026-08-31 12:44:41",
+    "organismo": "Rattus norvegicus / Mus musculus (Modelo Experimental SCC)",
+    "region_anatomica": "Corteza Somatosensorial Primaria (S1 / SCC)",
+    "canales_fluorescencia": {
+      "Canal 0 (DAPI / AGR488)": "Contramarcación Nuclear (405 / 488 nm)",
+      "Canal 1 (PV 546)": "Interneuronas Parvalbúmina-positivas (PV546 nm)",
+      "Canal 2 (WFA 647)": "Redes Perineuronales - Wisteria floribunda agglutinin (647 nm)"
+    }
+  },
+  "optica_y_calibracion_espacial": {
+    "magnificacion_objetivo": "10x",
+    "resolucion_sensor_px": "2048 x 2048",
+    "escala_espacial_um_por_px": 0.8913,
+    "superficie_campo_completo_global_um2": 3332020.91,
+    "superficie_campo_completo_global_mm2": 3.332,
+    "area_roi_estandar_corteza_mm2": 0.348015,
+    "area_roi_estandar_corteza_um2": 348015.0
+  },
+  "etapa_1_segmentacion_somas_pv": {
+    "metodo": "Cellpose Deep Learning (Preentrenado cyto2 / nuclei + adaptativo)",
+    "diametro_promedio_estimado_px": 17.0,
+    "diametro_promedio_estimado_um": 15.15,
+    "flow_threshold": 0.4,
+    "cellprob_threshold": 0.0,
+    "min_size_px": 15,
+    "preprocesamiento_pv": "Normalización por contraste dinámico / Percentil robusto",
+    "salida": "Máscara de Somas PV (m_pv.tif) y métricas morfométricas individuales"
+  },
+  "etapa_2_deteccion_redes_pnn_wfa": {
+    "arquitectura": "Doble Etapa de Deep Learning (Localizador Convolucional + Clasificador de Parches ResNet)",
+    "preprocesamiento_wfa": "Ninguno (Raw) — Señal nativa en rango dinámico completo sin filtros espaciales destructivos",
+    "etapa_2a_pnn_loc": {
+      "modelo": "Red Neuronal Convolucional de Localización de Centroides (model_loc)",
+      "tamano_mosaico_px": 512,
+      "solapamiento_mosaicos_px": 64,
+      "supresion_no_maximos_nms": 0.3,
+      "pnn_loc_threshold": "Umbral de sensibilidad inicial para detectar coordenadas candidatas (Y, X)"
+    },
+    "etapa_2b_pnn_score": {
+      "modelo": "Red Neuronal Profunda de Clasificación de Parches (model_score / ResNet)",
+      "tamano_parche_evaluado_px": "64 x 64",
+      "pnn_score_threshold": "0.50 (Probabilidad mínima requerida para confirmar una red PNN auténtica)",
+      "score_salida": "PNNscore continuo entre 0.0 y 1.0 (Confianza de la IA)"
+    },
+    "etapa_2c_delineacion_malla_pericelular": {
+      "radio_disco_perasomatico_um": 20.0,
+      "radio_disco_perasomatico_px": 22.4,
+      "anillo_pericelular": "Corona externa (20 µm) menos erosión de soma (2.0 µm)",
+      "delineacion_morfometrica": "Umbralización adaptativa local (Otsu sobre el disco perasomático) para aislar la malla real sobre el fondo local circundante",
+      "metricas_resultantes": "Área de malla (µm²), diámetro (µm), densidad integrada y WFA pericelular"
+    }
+  },
+  "etapa_3_colocalizacion_y_clasificacion_subpoblaciones": {
+    "criterio_colocalizacion": "Contención espacial del soma PV dentro de la corona/malla PNN (>50% superposición o distancia < 5.0 µm)",
+    "clases_celulares": [
+      "PV+/PNN+ (Interneurona PV envuelta en Red Perineuronal / PNN Rellena)",
+      "PV+/PNN- (Interneurona PV aislada / Libre de PNN)",
+      "PV-/PNN+ (Red PNN Hueca que rodea soma no-PV, ej. piramidal u otro)",
+      "PV-/PNN- (Núcleos / células no marcadas en el campo)"
+    ],
+    "mascara_validacion": "m_pv_pnn_coloc (Somas PV+ con PNN confirmados para auditoría visual en Napari)"
+  },
+  "etapa_4_cuantificacion_espacio_difuso_neuropilo": {
+    "definicion": "Intensidad media de fluorescencia en el parénquima libre de somas y condensaciones de WFA (m_wfa = 0)",
+    "ambitos_medicion": [
+      "Dentro del ROI cortical estándar",
+      "Fuera del ROI (tejido circundante)",
+      "Global (campo completo del preparado)"
+    ],
+    "ratio_contraste": "Intensidad Media de Red PNN / Intensidad Fondo Difuso ROI"
+  },
+  "etapa_5_formulaciones_densidad_y_ponderacion_area": {
+    "densidad_numerica_mm2": "N_componentes / Area_ROI (mm²)",
+    "densidad_integrada_por_mm2_roi": "Sum(wfa_sum_intensity) / Area_ROI (mm²)",
+    "densidad_integrada_por_um2_malla": "Sum(wfa_sum_intensity) / Sum(pnn_area_um2)",
+    "cobertura_pnn_pct_roi": "(Sum(pnn_area_um2) / (Area_ROI_mm2 * 1e6)) * 100",
+    "potencia_wfa_lupori_energy": "Densidad_PNN (redes/mm²) * Intensidad_Media_Red",
+    "potencia_wfa_ponderada_cobertura": "(Cobertura_PNN_pct / 100) * Intensidad_Media_Red",
+    "porcentaje_pv_envueltas": "(N_PV_PNN_coloc / N_PV_total) * 100",
+    "porcentaje_pnn_huecas": "(N_PNN_huecas / N_PNN_total) * 100"
+  }
+}

@@ -1,0 +1,1593 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Presentación Metodológica: Cuantificación PNN y PV en S1</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-main: #0B0F19;
+      --bg-card: #111827;
+      --bg-card-alt: #1F2937;
+      --accent-blue: #3B82F6;
+      --accent-cyan: #06B6D4;
+      --accent-purple: #8B5CF6;
+      --accent-emerald: #10B981;
+      --accent-amber: #F59E0B;
+      --accent-rose: #F43F5E;
+      --text-main: #F3F4F6;
+      --text-muted: #9CA3AF;
+      --border-color: #374151;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Top control bar */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 24px;
+      background: rgba(17, 24, 39, 0.9);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-color);
+      z-index: 50;
+      flex-shrink: 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: -0.01em;
+    }
+
+    .badge-tag {
+      background: linear-gradient(135deg, #1E40AF, #3730A3);
+      color: #93C5FD;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .controls-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .nav-btn {
+      background: var(--bg-card-alt);
+      color: var(--text-main);
+      border: 1px solid var(--border-color);
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+
+    .nav-btn:hover:not(:disabled) {
+      background: #374151;
+      border-color: var(--accent-blue);
+      transform: translateY(-1px);
+    }
+
+    .nav-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .slide-counter {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      min-width: 90px;
+      text-align: center;
+    }
+
+    .slide-counter span {
+      color: var(--accent-cyan);
+      font-weight: 700;
+    }
+
+    /* Progress bar */
+    .progress-track {
+      width: 100%;
+      height: 3px;
+      background: #1F2937;
+      position: relative;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent-blue), var(--accent-cyan));
+      width: 0%;
+      transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Presentation viewport */
+    .presentation-container {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .slide {
+      display: none;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      padding: 40px 60px;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+
+    .slide.active {
+      display: flex;
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Slide Typography */
+    .slide-header {
+      margin-bottom: 24px;
+      flex-shrink: 0;
+    }
+
+    .slide-category {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent-cyan);
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .slide-title {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.2;
+      background: linear-gradient(135deg, #FFFFFF, #CBD5E1);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .slide-subtitle {
+      font-size: 16px;
+      color: var(--text-muted);
+      margin-top: 6px;
+      font-weight: 400;
+    }
+
+    .slide-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* Grid layouts */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      height: 100%;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+
+    
+    /* Architecture Grid & Diagram Styling */
+    .grid-architecture {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 18px;
+      height: 100%;
+      min-height: 0;
+    }
+    .diagram-card {
+      background: #070b14;
+      border: 1px solid #1f293d;
+      border-radius: 12px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5);
+      overflow: hidden;
+      min-height: 0;
+    }
+    .diagram-card svg {
+      width: 100%;
+      height: auto;
+      max-height: 440px;
+      border-radius: 8px;
+      display: block;
+    }
+    .diagram-header {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      padding: 24px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card.highlight-blue {
+      border-color: rgba(59, 130, 246, 0.4);
+      background: linear-gradient(180deg, rgba(30, 58, 138, 0.15), var(--bg-card));
+    }
+
+    .card.highlight-purple {
+      border-color: rgba(139, 92, 246, 0.4);
+      background: linear-gradient(180deg, rgba(109, 40, 217, 0.15), var(--bg-card));
+    }
+
+    .card.highlight-emerald {
+      border-color: rgba(16, 185, 129, 0.4);
+      background: linear-gradient(180deg, rgba(6, 95, 70, 0.15), var(--bg-card));
+    }
+
+    .card.highlight-amber {
+      border-color: rgba(245, 158, 11, 0.4);
+      background: linear-gradient(180deg, rgba(180, 83, 9, 0.15), var(--bg-card));
+    }
+
+    .card-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card p, .card li {
+      font-size: 14px;
+      line-height: 1.6;
+      color: #D1D5DB;
+    }
+
+    .card ul {
+      padding-left: 18px;
+      margin-top: 8px;
+    }
+
+    .card li {
+      margin-bottom: 6px;
+    }
+
+    /* Comparison Table */
+    .table-container {
+      width: 100%;
+      overflow-x: auto;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 13.5px;
+    }
+
+    th {
+      background: var(--bg-card-alt);
+      padding: 12px 16px;
+      font-weight: 700;
+      color: var(--accent-cyan);
+      border-bottom: 1px solid var(--border-color);
+      text-transform: uppercase;
+      font-size: 12px;
+      letter-spacing: 0.05em;
+    }
+
+    td {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(55, 65, 81, 0.5);
+      line-height: 1.5;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    /* Code & Formulas */
+    .formula-box {
+      background: #030712;
+      border: 1px solid #1F2937;
+      border-radius: 8px;
+      padding: 14px 18px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: #6EE7B7;
+      margin: 10px 0;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .pill-blue { background: rgba(59, 130, 246, 0.2); color: #93C5FD; border: 1px solid rgba(59, 130, 246, 0.4); }
+    .pill-purple { background: rgba(139, 92, 246, 0.2); color: #C4B5FD; border: 1px solid rgba(139, 92, 246, 0.4); }
+    .pill-amber { background: rgba(245, 158, 11, 0.2); color: #FCD34D; border: 1px solid rgba(245, 158, 11, 0.4); }
+    .pill-rose { background: rgba(244, 63, 94, 0.2); color: #FDA4AF; border: 1px solid rgba(244, 63, 94, 0.4); }
+    .pill-emerald { background: rgba(16, 185, 129, 0.2); color: #6EE7B7; border: 1px solid rgba(16, 185, 129, 0.4); }
+
+    /* SVG Diagram slide */
+    .svg-wrapper {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #FFFFFF;
+      border-radius: 12px;
+      padding: 16px;
+      overflow: auto;
+    }
+
+    .svg-wrapper svg {
+      max-height: 100%;
+      width: auto;
+    }
+
+    /* Key indicator chips */
+    .stat-chip {
+      background: var(--bg-card-alt);
+      border-radius: 10px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--border-color);
+    }
+
+    .stat-chip .val {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--accent-cyan);
+      font-family: var(--font-mono);
+    }
+
+    .stat-chip .lbl {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      margin-top: 2px;
+      font-weight: 600;
+    }
+
+    /* Footer keyboard hints */
+    footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 24px;
+      background: rgba(17, 24, 39, 0.7);
+      border-top: 1px solid var(--border-color);
+      font-size: 12px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .kbd {
+      background: #1F2937;
+      border: 1px solid #374151;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: #E5E7EB;
+    }
+
+    @media print {
+      body {
+        overflow: visible;
+        height: auto;
+      }
+      header, footer, .progress-track {
+        display: none;
+      }
+      .presentation-container {
+        padding: 0;
+        display: block;
+      }
+      .slide {
+        position: relative;
+        opacity: 1;
+        visibility: visible;
+        transform: none;
+        page-break-after: always;
+        height: 100vh;
+        padding: 40px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="brand">
+      <span>🔬 Metodología PNN/PV en S1</span>
+      <span class="badge-tag">Defensa de Tesis</span>
+    </div>
+
+    <div class="controls-group">
+      <button class="nav-btn" id="prevBtn" onclick="prevSlide()">◀ Anterior</button>
+      <div class="slide-counter"><span id="currentSlideNum">1</span> / <span id="totalSlidesNum">13</span></div>
+      <button class="nav-btn" id="nextBtn" onclick="nextSlide()">Siguiente ▶</button>
+      <button class="nav-btn" onclick="toggleFullscreen()" title="Pantalla Completa (F)">⛶ Pantalla Completa</button>
+      <button class="nav-btn" onclick="window.print()" title="Imprimir o Guardar PDF">🖨️ PDF</button>
+    </div>
+  </header>
+
+  <!-- Progress bar -->
+  <div class="progress-track">
+    <div class="progress-fill" id="progressFill"></div>
+  </div>
+
+  <!-- Slides Viewport -->
+  <main class="presentation-container">
+
+    <!-- SLIDE 1: Portada -->
+    <section class="slide active" id="slide-1">
+      <div class="slide-body" style="justify-content: center; align-items: center; text-align: center; max-width: 900px; margin: 0 auto;">
+        <span class="pill pill-blue" style="margin-bottom: 16px; font-size: 12px; padding: 6px 14px;">Defensa Metodológica Experimental</span>
+        <h1 style="font-size: 40px; font-weight: 800; line-height: 1.15; margin-bottom: 20px; background: linear-gradient(135deg, #60A5FA, #A78BFA, #38BDF8); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+          Cuantificación y Morfometría de Redes Perineuronales (PNN) e Interneuronas PV+ en Corteza Somatosensorial (S1)
+        </h1>
+        <p style="font-size: 17px; color: #9CA3AF; max-width: 780px; line-height: 1.6; margin-bottom: 28px;">
+          Comparación metodológica entre el marco de <strong>Lupori et al. (2023)</strong> y el pipeline adaptado para el análisis celular sin sesgos en <strong>HistoLab</strong>.
+        </p>
+
+        <div class="grid-2" style="width: 100%; max-width: 740px; text-align: left; height: auto;">
+          <div class="card highlight-blue">
+            <span class="pill pill-blue" style="width: fit-content; margin-bottom: 8px;">Marco Canónico de Referencia</span>
+            <h4 style="font-size: 16px; color: #FFFFFF;">Lupori et al. (2023)</h4>
+            <p style="font-size: 13px; color: #9CA3AF; margin-top: 4px;">Detección puntual en canal WFA (PNNloc/PNNscore) y canal PV (PVloc/PVscore) con cuantificación por Random Forest y filtros de Gabor.</p>
+          </div>
+          <div class="card highlight-purple">
+            <span class="pill pill-purple" style="width: fit-content; margin-bottom: 8px;">Metodología del Estudio Actual</span>
+            <h4 style="font-size: 16px; color: #FFFFFF;">HistoLab (2026)</h4>
+            <p style="font-size: 13px; color: #9CA3AF; margin-top: 4px;">Segmentación somática de PV con Cellpose SAM, cuantificación isotrópica por disco continuo de 12 µm y estandarización espacial en S1.</p>
+          </div>
+        </div>
+
+        <div style="margin-top: 26px;">
+          <p style="font-size: 14px; color: #E2E8F0; font-weight: 600;">Autores: Daniel Zangrando & Rodrigo Yarzábal</p>
+          <p style="font-size: 12px; color: #64748B; margin-top: 4px;">HistoLab • Instituto de Investigaciones Biológicas • 2026</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 2: Marco Biológico -->
+    <section class="slide" id="slide-2">
+      <div class="slide-header">
+        <div class="slide-category">01. Introducción & Fisiología</div>
+        <h2 class="slide-title">Marco Biológico y Desafío de Cuantificación</h2>
+        <div class="slide-subtitle">Interneuronas GABAérgicas Parvalbúmina y condensación de matriz extracelular</div>
+      </div>
+      <div class="slide-body">
+        <div class="grid-3">
+          <div class="card highlight-blue">
+            <div class="card-title">⚡ Interneuronas PV+</div>
+            <p>Interneuronas inhibitorias tipo <em>fast-spiking</em> que generan oscilaciones gamma (30-80 Hz) y modulan la ganancia cortical sensorial.</p>
+            <ul>
+              <li><strong>Marcador:</strong> Parvalbumin (PV546 nm / Cy3).</li>
+              <li><strong>Morfología:</strong> Somas redondos u ovoides bien definidos (diámetro ~10-18 µm).</li>
+              <li><strong>Reto analítico:</strong> Heterogeneidad en intensidad intracelular y neuropilo denso.</li>
+            </ul>
+          </div>
+          <div class="card highlight-purple">
+            <div class="card-title">🕸️ Redes Perineuronales (PNN)</div>
+            <p>Especializaciones de la matriz extracelular compuestas por condroitín sulfato proteoglicanos (CSPGs) y ácido hialurónico.</p>
+            <ul>
+              <li><strong>Marcador:</strong> <em>Wisteria Floribunda</em> (WFA647 Far-Red).</li>
+              <li><strong>Función:</strong> Clausura de periodos críticos de plasticidad sináptica en S1.</li>
+              <li><strong>Reto analítico:</strong> Malla reticular no homogénea, sin membrana celular definida.</li>
+            </ul>
+          </div>
+          <div class="card highlight-emerald">
+            <div class="card-title">🎯 Pregunta Experimental</div>
+            <p>¿Cómo cuantificar objetivamente la intensidad y densidad de condensación perineuronal en cortes coronales confocalizados?</p>
+            <ul>
+              <li>Independencia frente al fondo de neuropilo difuso.</li>
+              <li>Identificación rigurosa de subpoblaciones (redes con soma PV vs. redes huecas).</li>
+              <li>Reproducibilidad matemática invariante al observador.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card" style="flex-direction: row; align-items: center; justify-content: space-around; background: #0F172A; border-color: #1E293B;">
+          <div class="stat-chip"><span class="val">0.8913 µm/px</span><span class="lbl">Resolución Confocal 10x</span></div>
+          <div class="stat-chip"><span class="val">8 bits</span><span class="lbl">Profundidad Dinámica (0 - 255)</span></div>
+          <div class="stat-chip"><span class="val">0.348 mm²</span><span class="lbl">Área Estandarizada por ROI</span></div>
+          <div class="stat-chip"><span class="val">12.0 µm</span><span class="lbl">Radio del Disco Cuantificador</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 3: Paper Canónico Lupori 2023 -->
+    <section class="slide" id="slide-3">
+      <div class="slide-header">
+        <div class="slide-category">02. Marco Metodológico Canónico</div>
+        <h2 class="slide-title">El Pipeline Canónico de Lupori et al. (2023)</h2>
+        <div class="slide-subtitle">Detección puntual de objetos y cuantificación en secciones de cerebro completo</div>
+      </div>
+      <div class="slide-body">
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-title">Estructura del Pipeline en Lupori et al.</div>
+            <p>Lupori et al. desarrollaron un flujo automatizado para mapear PNNs y células PV registradas al atlas Allen CCFv3:</p>
+            <ul>
+              <li><strong>Canal WFA (PNNs):</strong> Localización con Faster R-CNN (<code>PNNloc</code>) y descarte de falsos positivos mediante una ConvNet de ranking (<code>PNNscore</code>, umbral ≥ 0.40).</li>
+              <li><strong>Canal PV:</strong> Detección puntual con <code>PVloc</code> (Faster R-CNN) y <code>PVscore</code> (ConvNet de ranking, umbral ≥ 0.55). No genera máscaras de contorno somático.</li>
+              <li><strong>Cuantificación de Tinción:</strong> Parches de 80 × 80 px centrados en cada objeto detectado; clasificación de píxeles (célula vs. fondo) mediante <strong>Random Forest</strong> (TreeBagger) con 16 filtros de Gabor.</li>
+              <li><strong>Colocalización:</strong> Distancia euclidiana entre centroides de PNN y PV ≤ 15 píxeles (9.675 µm).</li>
+            </ul>
+          </div>
+
+          <div class="card highlight-blue">
+            <div class="card-title">Adaptación a los Objetivos de Nuestro Estudio</div>
+            <p>Al aplicar este marco a los experimentos confocales en el laboratorio de histología, definimos adaptaciones metodológicas específicas:</p>
+            <ul>
+              <li><strong>Morfometría Somática Real:</strong> Lupori detecta la posición puntual de las células PV, pero no su superficie. Para estudiar variaciones morfométricas incorporamos la segmentación de contornos somáticos (área en µm²).</li>
+              <li><strong>Comparación Libre de Sesgos (PV+ vs. PV-):</strong> En Lupori la señal depende de los píxeles de Gabor en 80 × 80 px. Para comparar objetivamente las PNNs con soma PV frente a las PNNs sin soma (redes huecas), adoptamos un <strong>disco continuo invariante de 12 µm</strong> que evalúa ambas poblaciones bajo la misma área geométrica.</li>
+              <li><strong>Estandarización Espacial en S1:</strong> Frente a distorsiones elásticas del registro atlas CCFv3 en cortes coronales con variación angular, adoptamos un marco muestral constante de 0.348 mm².</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 4: Cuadro Comparativo Global -->
+    <section class="slide" id="slide-4">
+      <div class="slide-header">
+        <div class="slide-category">03. Metodología Comparada</div>
+        <h2 class="slide-title">Cuadro Comparativo: Lupori et al. vs. Metodología del Estudio</h2>
+        <div class="slide-subtitle">Comparación sistemática de las dimensiones metodológicas entre ambos enfoques</div>
+      </div>
+      <div class="slide-body">
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Dimensión Metodológica</th>
+                <th>Lupori et al. (2023) [Canónico]</th>
+                <th>Metodología Adoptada [HistoLab]</th>
+                <th>Fundamento Metodológico</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>1. Normalización Espacial</strong></td>
+                <td>Registro no rígido al atlas Allen CCFv3</td>
+                <td><span class="pill pill-emerald">ROI Estandarizada Fija</span> (0.348015 mm² en Napari)</td>
+                <td>Invariante ante deformaciones elásticas del corte; densidades comparables directamente.</td>
+              </tr>
+              <tr>
+                <td><strong>2. Detección de PV+</strong></td>
+                <td>Detección puntual (PVloc + PVscore)</td>
+                <td><span class="pill pill-purple">Cellpose cpsam_v2</span> (Campos de Flujo + SAM ViT)</td>
+                <td>Segmentación de contornos somáticos reales célula a célula; cálculo de área somática en µm².</td>
+              </tr>
+              <tr>
+                <td><strong>3. Detección de PNN (WFA)</strong></td>
+                <td>Faster R-CNN (PNNloc) + ConvNet (PNNscore)</td>
+                <td><span class="pill pill-blue">PNNloc + PNNscore</span> + <strong>Spatial NMS por Distancia (&lt; 10 px ≈ 8.91 µm)</strong></td>
+                <td>Pesos originales de Lupori et al.; se añade desduplicación espacial por solapamiento de tiles.</td>
+              </tr>
+              <tr>
+                <td><strong>4. Cuantificación de PNN</strong></td>
+                <td>Parches 80 × 80 px + Random Forest (Gabor)</td>
+                <td><span class="pill pill-cyan" style="color:#06B6D4;">Disco Circular Continuo</span> (Radio 12 µm = 410.7 µm²)</td>
+                <td>Superficie idéntica para comparar subpoblaciones PV+ y PV- sin sesgo metodológico.</td>
+              </tr>
+              <tr>
+                <td><strong>5. Colocalización</strong></td>
+                <td>Distancia entre centroides ≤ 15 px (9.675 µm)</td>
+                <td><span class="pill pill-emerald">Inclusión Topológica</span> en máscara somática PV</td>
+                <td>Clasificación celular exacta: PV+/PNN+, PV-/PNN+ (red hueca) y PV+/PNN- (interneurona desnuda).</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 5: Arquitectura Cellpose SAM v2 -->
+    <section class="slide" id="slide-5">
+      <div class="slide-header">
+        <div class="slide-category">04. Redes Neuronales • Rama PV</div>
+        <h2 class="slide-title">Arquitectura 1: Cellpose SAM v2 (cpsam_v2)</h2>
+        <div class="slide-subtitle">Segmentación de contornos somáticos de interneuronas PV+ mediante campos vectoriales</div>
+      </div>
+      <div class="slide-body">
+        <div class="grid-architecture">
+          <div style="display:flex; flex-direction:column; gap:12px; overflow-y:auto;">
+            <div class="card highlight-purple" style="padding:16px;">
+              <div class="card-title" style="font-size:16px;">Estructura Cellpose SAM v2</div>
+              <p style="font-size:12.5px; line-height:1.5;">Backbone híbrido U-Net + Segment Anything Model (SAM ViT):</p>
+              <ul style="font-size:12px; line-height:1.45; margin-top:4px; padding-left:16px;">
+                <li><b>Entrada:</b> Canal PV546 crudo en 8 bits (0 - 255) sin saturación.</li>
+                <li><b>Rama de Flujo:</b> Predice campos vectoriales de difusión de calor [<i>V</i><sub>x</sub>, <i>V</i><sub>y</sub>].</li>
+                <li><b>Rama de Probabilidad:</b> Mapa de probabilidad de presencia celular <i>P</i><sub>cell</sub>.</li>
+                <li><b>Integración de Euler:</b> Desplaza vóxeles hacia los atractores somáticos centrales.</li>
+              </ul>
+              <div class="formula-box" style="padding:10px; font-size:11.5px; margin:8px 0;">
+                x<sub>t+1</sub> = x<sub>t</sub> + η · V(x<sub>t</sub>) &emsp; [Convergencia hacia centroide somático]
+              </div>
+            </div>
+
+            <div class="card" style="padding:14px;">
+              <div class="card-title" style="font-size:14px; margin-bottom:6px;">Calibración Somática</div>
+              <ul style="font-size:11.5px; line-height:1.45; margin:0; padding-left:16px;">
+                <li><b>Diámetro Nominal:</b> <code>diameter = 20.0 px</code> (≈ 17.8 µm a 0.8913 µm/px).</li>
+                <li><b>Umbrales:</b> <code>flow_threshold = 0.80</code>, <code>cellprob_threshold = -1.50</code>.</li>
+                <li><b>Salida:</b> Máscara somática con cálculo de área real en µm² e inclusión topológica.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="diagram-card">
+            <div class="diagram-header">
+              <span style="color:#c084fc;">📐 Diagrama Arquitectural del Modelo</span>
+              <span class="pill pill-purple">Dual U-Net + SAM ViT</span>
+            </div>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 520" width="1000" height="520" style="background:#090d16; font-family:'Inter',system-ui,-apple-system,sans-serif;">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1120"/>
+      <stop offset="100%" stop-color="#050811"/>
+    </linearGradient>
+    <linearGradient id="pvInput" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#db2777"/>
+      <stop offset="100%" stop-color="#831843"/>
+    </linearGradient>
+    <linearGradient id="vitGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#4c1d95"/>
+    </linearGradient>
+    <linearGradient id="unetGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#312e81"/>
+    </linearGradient>
+    <linearGradient id="flowGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#0e7490"/>
+    </linearGradient>
+    <linearGradient id="probGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#065f46"/>
+    </linearGradient>
+    <linearGradient id="outGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#b45309"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrow-purple" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#c084fc"/>
+    </marker>
+  </defs>
+
+  <!-- Canvas Background -->
+  <rect width="1000" height="520" fill="url(#bgGrad)" rx="12" stroke="#1e293b" stroke-width="2"/>
+
+  <!-- Title Badge -->
+  <g transform="translate(30, 25)">
+    <rect width="940" height="42" rx="8" fill="#111827" stroke="#334155" stroke-width="1"/>
+    <text x="20" y="26" fill="#c084fc" font-size="16" font-weight="700">ARQUITECTURA CELLPOSE SAM v2 (cpsam_v2) • RAMA PV</text>
+    <text x="680" y="26" fill="#94a3b8" font-size="12" font-weight="500">Segmentación de Instancias por Flujo Vectorial</text>
+  </g>
+
+  <!-- 1. INPUT -->
+  <g transform="translate(35, 95)">
+    <rect width="125" height="295" rx="10" fill="#111827" stroke="#db2777" stroke-width="1.5"/>
+    <rect x="15" y="20" width="95" height="95" rx="8" fill="url(#pvInput)" opacity="0.85"/>
+    <circle cx="62" cy="67" r="22" fill="#f43f5e" opacity="0.9"/>
+    <circle cx="62" cy="67" r="12" fill="#ffe4e6"/>
+    <text x="62" y="145" fill="#fbcfe8" font-size="13" font-weight="700" text-anchor="middle">Canal PV546</text>
+    <text x="62" y="168" fill="#94a3b8" font-size="11" text-anchor="middle">Confocal 8-bit</text>
+    <text x="62" y="188" fill="#94a3b8" font-size="11" text-anchor="middle">[H × W × 1]</text>
+    <rect x="15" y="215" width="95" height="55" rx="6" fill="#1e1b4b" stroke="#4338ca" stroke-width="1"/>
+    <text x="62" y="234" fill="#a5b4fc" font-size="10" font-weight="600" text-anchor="middle">Calibración S1</text>
+    <text x="62" y="250" fill="#e0e7ff" font-size="11" font-weight="700" text-anchor="middle">0.8913 µm/px</text>
+  </g>
+
+  <!-- Arrow 1 -> 2 -->
+  <path d="M 160 240 L 195 240" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 2. ENCODER BACKBONE (SAM ViT + U-Net) -->
+  <g transform="translate(200, 90)">
+    <rect width="210" height="305" rx="10" fill="#0f172a" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="105" y="28" fill="#c084fc" font-size="13" font-weight="700" text-anchor="middle">ENCODER HÍBRIDO</text>
+    
+    <!-- SAM ViT Block -->
+    <rect x="15" y="42" width="180" height="110" rx="8" fill="url(#vitGrad)" opacity="0.9"/>
+    <text x="105" y="66" fill="#ffffff" font-size="12" font-weight="700" text-anchor="middle">SAM Vision Transformer</text>
+    <text x="105" y="84" fill="#ddd6fe" font-size="10" text-anchor="middle">Patch Embedding (16×16 px)</text>
+    <text x="105" y="102" fill="#ddd6fe" font-size="10" text-anchor="middle">Multi-Head Self-Attention</text>
+    <text x="105" y="120" fill="#a7f3d0" font-size="10" font-weight="600" text-anchor="middle">Pesos Fundacionales SAM</text>
+    <rect x="30" y="128" width="150" height="16" rx="4" fill="#1e1b4b"/>
+    <text x="105" y="140" fill="#c7d2fe" font-size="9" text-anchor="middle">Invariante a fondo y escala</text>
+
+    <!-- Downsampling U-Net -->
+    <rect x="15" y="165" width="180" height="120" rx="8" fill="url(#unetGrad)" opacity="0.85"/>
+    <text x="105" y="188" fill="#ffffff" font-size="12" font-weight="700" text-anchor="middle">Downsampling U-Net</text>
+    <text x="105" y="206" fill="#c7d2fe" font-size="10" text-anchor="middle">4 Niveles Residuales</text>
+    <text x="105" y="224" fill="#c7d2fe" font-size="10" text-anchor="middle">Conv2D 3×3 + BN + ReLU</text>
+    <text x="105" y="244" fill="#fef08a" font-size="11" font-weight="600" text-anchor="middle">diameter = 20 px (~17.8 µm)</text>
+    <text x="105" y="264" fill="#93c5fd" font-size="10" text-anchor="middle">Cuello de Botella Latente</text>
+  </g>
+
+  <!-- Arrow 2 -> 3 -->
+  <path d="M 410 240 L 445 240" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- Dotted Skip Connection -->
+  <path d="M 395 190 C 420 170, 435 170, 455 190" stroke="#818cf8" stroke-width="1.5" stroke-dasharray="3,3" fill="none" marker-end="url(#arrow-purple)"/>
+
+  <!-- 3. DECODER & DUAL PREDICTION HEADS -->
+  <g transform="translate(450, 90)">
+    <rect width="230" height="305" rx="10" fill="#0f172a" stroke="#06b6d4" stroke-width="1.5"/>
+    <text x="115" y="28" fill="#22d3ee" font-size="13" font-weight="700" text-anchor="middle">DECODER &amp; CABEZALES DUALES</text>
+
+    <!-- Upsampling block -->
+    <rect x="15" y="42" width="200" height="50" rx="6" fill="#164e63" stroke="#0891b2" stroke-width="1"/>
+    <text x="115" y="62" fill="#cffafe" font-size="11" font-weight="700" text-anchor="middle">Up-Sampling Convolucional</text>
+    <text x="115" y="78" fill="#a5f3fc" font-size="9" text-anchor="middle">Concatenación de Skip Connections</text>
+
+    <!-- Branch A: Flows -->
+    <rect x="15" y="102" width="200" height="88" rx="8" fill="url(#flowGrad)" opacity="0.85"/>
+    <text x="115" y="124" fill="#ffffff" font-size="12" font-weight="700" text-anchor="middle">Rama 1: Campos de Flujo</text>
+    <text x="115" y="142" fill="#e0f2fe" font-size="12" font-weight="600" text-anchor="middle">[ V_x(x,y),  V_y(x,y) ]</text>
+    <text x="115" y="158" fill="#bae6fd" font-size="10" text-anchor="middle">Gradiente al centro somático</text>
+    <text x="115" y="174" fill="#fef08a" font-size="10" font-weight="600" text-anchor="middle">flow_threshold = 0.80</text>
+
+    <!-- Branch B: Cell Probability -->
+    <rect x="15" y="200" width="200" height="88" rx="8" fill="url(#probGrad)" opacity="0.85"/>
+    <text x="115" y="222" fill="#ffffff" font-size="12" font-weight="700" text-anchor="middle">Rama 2: Probabilidad Celular</text>
+    <text x="115" y="240" fill="#ecfdf5" font-size="12" font-weight="600" text-anchor="middle">P_cell(x, y) ∈ [-∞, +∞]</text>
+    <text x="115" y="256" fill="#a7f3d0" font-size="10" text-anchor="middle">Mapa de pertenencia intracelular</text>
+    <text x="115" y="272" fill="#fef08a" font-size="10" font-weight="600" text-anchor="middle">cellprob_threshold = -1.50</text>
+  </g>
+
+  <!-- Arrow 3 -> 4 -->
+  <path d="M 680 240 L 715 240" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- 4. DYNAMIC EULER INTEGRATION & INSTANCES -->
+  <g transform="translate(720, 90)">
+    <rect width="245" height="305" rx="10" fill="#0f172a" stroke="#f59e0b" stroke-width="1.5"/>
+    <text x="122" y="28" fill="#fbbf24" font-size="13" font-weight="700" text-anchor="middle">POST-PROCESO DINÁMICO</text>
+
+    <!-- Euler box -->
+    <rect x="15" y="42" width="215" height="80" rx="6" fill="#1e1b4b" stroke="#6366f1" stroke-width="1"/>
+    <text x="122" y="62" fill="#c7d2fe" font-size="11" font-weight="700" text-anchor="middle">Integración de Euler (Gradiente)</text>
+    <text x="122" y="82" fill="#6ee7b7" font-size="11" font-family="monospace" text-anchor="middle">X_{t+1} = X_t + η · V(X_t)</text>
+    <text x="122" y="104" fill="#cbd5e1" font-size="9.5" text-anchor="middle">Convergencia en cuencas de atracción</text>
+
+    <!-- Output mask -->
+    <rect x="15" y="132" width="215" height="155" rx="8" fill="url(#outGrad)" opacity="0.9"/>
+    <text x="122" y="154" fill="#ffffff" font-size="12" font-weight="700" text-anchor="middle">MÁSCARA DE INSTANCIAS (m_pv)</text>
+    
+    <!-- Mini cells representation -->
+    <circle cx="70" cy="188" r="17" fill="#1e293b" stroke="#fde68a" stroke-width="2"/>
+    <text x="70" y="192" fill="#fde68a" font-size="10" font-weight="700" text-anchor="middle">ID:1</text>
+    <circle cx="125" cy="180" r="14" fill="#1e293b" stroke="#fde68a" stroke-width="2"/>
+    <text x="125" y="184" fill="#fde68a" font-size="9" font-weight="700" text-anchor="middle">ID:2</text>
+    <circle cx="175" cy="192" r="15" fill="#1e293b" stroke="#fde68a" stroke-width="2"/>
+    <text x="175" y="196" fill="#fde68a" font-size="10" font-weight="700" text-anchor="middle">ID:3</text>
+
+    <rect x="25" y="222" width="195" height="55" rx="6" fill="#18181b" opacity="0.85"/>
+    <text x="122" y="238" fill="#fef08a" font-size="10" font-weight="700" text-anchor="middle">• Área Somática Real (A_soma en µm²)</text>
+    <text x="122" y="252" fill="#e4e4e7" font-size="9.5" text-anchor="middle">• Diámetro y Morfometría Real</text>
+    <text x="122" y="267" fill="#a7f3d0" font-size="9.5" text-anchor="middle">• Inclusión Topológica: (c_x, c_y) ∈ m_pv</text>
+  </g>
+
+  <!-- Footer Banner -->
+  <g transform="translate(30, 455)">
+    <rect width="940" height="42" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <text x="30" y="26" fill="#38bdf8" font-size="12" font-weight="600">SEGMENTACIÓN SOMÁTICA:</text>
+    <text x="230" y="26" fill="#cbd5e1" font-size="11.5">Genera contornos celulares somáticos reales célula a célula, permitiendo calcular áreas en µm² y evaluar colocalización topológica.</text>
+  </g>
+</svg>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 6: Arquitectura Faster R-CNN (PNNloc) -->
+    <section class="slide" id="slide-6">
+      <div class="slide-header">
+        <div class="slide-category">05. Redes Neuronales • Rama PNN (1/2)</div>
+        <h2 class="slide-title">Arquitectura 2: Faster R-CNN (PNNloc de Lupori et al.)</h2>
+        <div class="slide-subtitle">Detección de propuestas de región para mallas perineuronales en canal WFA</div>
+      </div>
+      <div class="slide-body">
+        <div class="grid-architecture">
+          <div style="display:flex; flex-direction:column; gap:12px; overflow-y:auto;">
+            <div class="card highlight-blue" style="padding:16px;">
+              <div class="card-title" style="font-size:16px;">Estructura Faster R-CNN</div>
+              <p style="font-size:12.5px; line-height:1.5;">Detección en dos etapas adaptada a fluorescencia de redes:</p>
+              <ul style="font-size:12px; line-height:1.45; margin-top:4px; padding-left:16px;">
+                <li><b>ResNet-50 + FPN:</b> Pirámide multiescala (P2 a P6) para detectar PNNs de cualquier tamaño.</li>
+                <li><b>RPN:</b> 3 anclas (1:1, 1:2, 2:1) evaluando acumulación de WFA.</li>
+                <li><b>RoIAlign:</b> Muestreo bilineal sin cuantización para precisión submétrica.</li>
+              </ul>
+              <div class="formula-box" style="padding:10px; font-size:11.5px; margin:8px 0;">
+                Centroide: <i>c</i><sub>x</sub> = (<i>x</i>₁ + <i>x</i>₂) / 2, &emsp; <i>c</i><sub>y</sub> = (<i>y</i>₁ + <i>y</i>₂) / 2
+              </div>
+            </div>
+
+            <div class="card" style="padding:14px;">
+              <div class="card-title" style="font-size:14px; margin-bottom:6px;">Inferencia por Mosaicos (Tiles)</div>
+              <ul style="font-size:11.5px; line-height:1.45; margin:0; padding-left:16px;">
+                <li><b>Tamaño de Tile:</b> 256 × 256 px en canal WFA.</li>
+                <li><b>Solapamiento (Overlap):</b> 64 px entre tiles para no cortar PNNs en bordes.</li>
+                <li><b>Umbral de Confianza:</b> <code>loc_threshold = 0.20</code>.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="diagram-card">
+            <div class="diagram-header">
+              <span style="color:#38bdf8;">📐 Diagrama Arquitectural del Modelo</span>
+              <span class="pill pill-blue">ResNet-50 + FPN + RoIAlign</span>
+            </div>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 520" width="1000" height="520" style="background:#090d16; font-family:'Inter',system-ui,-apple-system,sans-serif;">
+  <defs>
+    <linearGradient id="bgGrad2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1120"/>
+      <stop offset="100%" stop-color="#050811"/>
+    </linearGradient>
+    <linearGradient id="wfaGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#1e3a8a"/>
+    </linearGradient>
+    <linearGradient id="resnetGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#1d4ed8"/>
+    </linearGradient>
+    <linearGradient id="fpnGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0284c7"/>
+      <stop offset="100%" stop-color="#0369a1"/>
+    </linearGradient>
+    <linearGradient id="rpnGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#d97706"/>
+      <stop offset="100%" stop-color="#92400e"/>
+    </linearGradient>
+    <linearGradient id="headGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#059669"/>
+      <stop offset="100%" stop-color="#064e3b"/>
+    </linearGradient>
+    <marker id="arrow2" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <rect width="1000" height="520" fill="url(#bgGrad2)" rx="12" stroke="#1e293b" stroke-width="2"/>
+
+  <!-- Title Badge -->
+  <g transform="translate(30, 25)">
+    <rect width="940" height="42" rx="8" fill="#111827" stroke="#334155" stroke-width="1"/>
+    <text x="20" y="26" fill="#38bdf8" font-size="16" font-weight="700">ARQUITECTURA FASTER R-CNN (PNNloc de Lupori et al.) • RAMA PNN (1/2)</text>
+    <text x="690" y="26" fill="#94a3b8" font-size="12" font-weight="500">Detección de Propuestas de Bounding Box</text>
+  </g>
+
+  <!-- 1. INPUT & TILING -->
+  <g transform="translate(35, 95)">
+    <rect width="135" height="295" rx="10" fill="#111827" stroke="#38bdf8" stroke-width="1.5"/>
+    <rect x="18" y="20" width="100" height="100" rx="6" fill="url(#wfaGrad)" opacity="0.85"/>
+    <rect x="25" y="25" width="40" height="40" fill="none" stroke="#fde047" stroke-width="1.5" stroke-dasharray="2,2"/>
+    <rect x="45" y="45" width="40" height="40" fill="none" stroke="#38bdf8" stroke-width="1.5"/>
+    <text x="67" y="145" fill="#bae6fd" font-size="13" font-weight="700" text-anchor="middle">Canal WFA647</text>
+    <text x="67" y="166" fill="#94a3b8" font-size="11" text-anchor="middle">Tiles 256 × 256 px</text>
+    <text x="67" y="185" fill="#fde047" font-size="10.5" font-weight="600" text-anchor="middle">Overlap = 64 px</text>
+    
+    <rect x="15" y="210" width="105" height="60" rx="6" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <text x="67" y="230" fill="#93c5fd" font-size="10" font-weight="600" text-anchor="middle">Ventana Deslizante</text>
+    <text x="67" y="246" fill="#e2e8f0" font-size="9.5" text-anchor="middle">Garantiza cobertura</text>
+    <text x="67" y="258" fill="#e2e8f0" font-size="9.5" text-anchor="middle">en bordes de tile</text>
+  </g>
+
+  <path d="M 170 240 L 200 240" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow2)"/>
+
+  <!-- 2. RESNET-50 BACKBONE -->
+  <g transform="translate(205, 90)">
+    <rect width="180" height="305" rx="10" fill="#0f172a" stroke="#2563eb" stroke-width="1.5"/>
+    <text x="90" y="28" fill="#60a5fa" font-size="13" font-weight="700" text-anchor="middle">RESNET-50 BACKBONE</text>
+    
+    <!-- Conv Stages -->
+    <rect x="15" y="42" width="150" height="40" rx="6" fill="url(#resnetGrad)" opacity="0.8"/>
+    <text x="90" y="66" fill="#ffffff" font-size="11" font-weight="700" text-anchor="middle">Stage 1: 7×7 Conv, /2</text>
+
+    <rect x="15" y="90" width="150" height="40" rx="6" fill="url(#resnetGrad)" opacity="0.85"/>
+    <text x="90" y="114" fill="#ffffff" font-size="11" font-weight="700" text-anchor="middle">Stage 2: 3x Bottleneck (C2)</text>
+
+    <rect x="15" y="138" width="150" height="40" rx="6" fill="url(#resnetGrad)" opacity="0.9"/>
+    <text x="90" y="162" fill="#ffffff" font-size="11" font-weight="700" text-anchor="middle">Stage 3: 4x Bottleneck (C3)</text>
+
+    <rect x="15" y="186" width="150" height="40" rx="6" fill="url(#resnetGrad)" opacity="0.95"/>
+    <text x="90" y="210" fill="#ffffff" font-size="11" font-weight="700" text-anchor="middle">Stage 4: 6x Bottleneck (C4)</text>
+
+    <rect x="15" y="234" width="150" height="40" rx="6" fill="#1e3a8a" stroke="#3b82f6" stroke-width="1"/>
+    <text x="90" y="258" fill="#ffffff" font-size="11" font-weight="700" text-anchor="middle">Stage 5: 3x Bottleneck (C5)</text>
+  </g>
+
+  <path d="M 385 240 L 415 240" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow2)"/>
+
+  <!-- 3. FPN (Feature Pyramid Network) -->
+  <g transform="translate(420, 90)">
+    <rect width="165" height="305" rx="10" fill="#0f172a" stroke="#0284c7" stroke-width="1.5"/>
+    <text x="82" y="28" fill="#38bdf8" font-size="13" font-weight="700" text-anchor="middle">FEATURE PYRAMID (FPN)</text>
+    
+    <!-- Levels -->
+    <rect x="15" y="45" width="135" height="35" rx="6" fill="url(#fpnGrad)"/>
+    <text x="82" y="67" fill="#ffffff" font-size="11" font-weight="700" text-anchor="middle">P6 (Stride 64)</text>
+
+    <rect x="15" y="90" width="135" height="35" rx="6" fill="url(#fpnGrad)"/>
+    <text x="82" y="112" fill="#ffffff" font-size="11" font-weight="700" text-anchor="middle">P5 (Stride 32)</text>
+
+    <rect x="15" y="135" width="135" height="35" rx="6" fill="url(#fpnGrad)"/>
+    <text x="82" y="157" fill="#ffffff" font-size="11" font-weight="700" text-anchor="middle">P4 (Stride 16)</text>
+
+    <rect x="15" y="180" width="135" height="35" rx="6" fill="url(#fpnGrad)"/>
+    <text x="82" y="202" fill="#ffffff" font-size="11" font-weight="700" text-anchor="middle">P3 (Stride 8)</text>
+
+    <rect x="15" y="225" width="135" height="35" rx="6" fill="url(#fpnGrad)"/>
+    <text x="82" y="247" fill="#ffffff" font-size="11" font-weight="700" text-anchor="middle">P2 (Stride 4)</text>
+
+    <text x="82" y="282" fill="#93c5fd" font-size="9.5" text-anchor="middle">Detección Multiescala</text>
+  </g>
+
+  <path d="M 585 240 L 615 240" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow2)"/>
+
+  <!-- 4. RPN & ROI-ALIGN -->
+  <g transform="translate(620, 90)">
+    <rect width="165" height="305" rx="10" fill="#0f172a" stroke="#d97706" stroke-width="1.5"/>
+    <text x="82" y="28" fill="#f59e0b" font-size="13" font-weight="700" text-anchor="middle">RPN &amp; RoIAlign</text>
+    
+    <rect x="12" y="45" width="140" height="95" rx="8" fill="url(#rpnGrad)" opacity="0.85"/>
+    <text x="82" y="68" fill="#ffffff" font-size="11" font-weight="700" text-anchor="middle">Region Proposal (RPN)</text>
+    <text x="82" y="86" fill="#fde68a" font-size="10" text-anchor="middle">3 Anclas × Escala</text>
+    <text x="82" y="102" fill="#fde68a" font-size="9.5" text-anchor="middle">Ratios: 1:1, 1:2, 2:1</text>
+    <text x="82" y="122" fill="#ffffff" font-size="10" font-weight="600" text-anchor="middle">Objectness Score</text>
+
+    <rect x="12" y="155" width="140" height="120" rx="8" fill="#1e293b" stroke="#f59e0b" stroke-width="1"/>
+    <text x="82" y="180" fill="#fbbf24" font-size="12" font-weight="700" text-anchor="middle">RoIAlign</text>
+    <text x="82" y="200" fill="#e2e8f0" font-size="10" text-anchor="middle">Muestreo Bilineal</text>
+    <text x="82" y="218" fill="#cbd5e1" font-size="9" text-anchor="middle">Sin cuantización entera</text>
+    <text x="82" y="238" fill="#a7f3d0" font-size="10" font-weight="600" text-anchor="middle">Preserva resolución</text>
+    <text x="82" y="254" fill="#a7f3d0" font-size="9.5" text-anchor="middle">submétrica</text>
+  </g>
+
+  <path d="M 785 240 L 815 240" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow2)"/>
+
+  <!-- 5. FAST R-CNN HEAD & CENTROIDS -->
+  <g transform="translate(820, 90)">
+    <rect width="150" height="305" rx="10" fill="#0f172a" stroke="#059669" stroke-width="1.5"/>
+    <text x="75" y="28" fill="#34d399" font-size="13" font-weight="700" text-anchor="middle">DETECCIÓN PNN</text>
+    
+    <rect x="12" y="45" width="126" height="65" rx="6" fill="url(#headGrad)" opacity="0.9"/>
+    <text x="75" y="68" fill="#ffffff" font-size="11" font-weight="700" text-anchor="middle">FC 1024 Layers</text>
+    <text x="75" y="86" fill="#a7f3d0" font-size="10" text-anchor="middle">Score ≥ 0.20</text>
+    <text x="75" y="100" fill="#e2e8f0" font-size="9" text-anchor="middle">Filtro inicial RPN</text>
+
+    <rect x="12" y="125" width="126" height="155" rx="6" fill="#134e4a" stroke="#10b981" stroke-width="1"/>
+    <text x="75" y="148" fill="#6ee7b7" font-size="11" font-weight="700" text-anchor="middle">Bounding Box</text>
+    <text x="75" y="168" fill="#ffffff" font-size="10" font-family="monospace" text-anchor="middle">[x_1, y_1, x_2, y_2]</text>
+    
+    <line x1="20" y1="185" x2="130" y2="185" stroke="#0d9488" stroke-width="1"/>
+    
+    <text x="75" y="206" fill="#fde047" font-size="11" font-weight="700" text-anchor="middle">CENTROIDE PNN</text>
+    <text x="75" y="226" fill="#ffffff" font-size="10" font-family="monospace" text-anchor="middle">c_x = (x_1+x_2)/2</text>
+    <text x="75" y="244" fill="#ffffff" font-size="10" font-family="monospace" text-anchor="middle">c_y = (y_1+y_2)/2</text>
+    <text x="75" y="265" fill="#a7f3d0" font-size="9" text-anchor="middle">→ Pasa a PNNscore</text>
+  </g>
+
+  <!-- Footer Banner -->
+  <g transform="translate(30, 455)">
+    <rect width="940" height="42" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <text x="30" y="26" fill="#38bdf8" font-size="12" font-weight="600">INFERENCIA POR MOSAICOS:</text>
+    <text x="240" y="26" fill="#cbd5e1" font-size="11.5">Tiles de 256 px con overlap de 64 px y umbral de 0.20 para alta sensibilidad en redes de corteza somatosensorial.</text>
+  </g>
+</svg>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 7: ConvNet Ranking (PNNscore) & Spatial NMS -->
+    <section class="slide" id="slide-7">
+      <div class="slide-header">
+        <div class="slide-category">06. Redes Neuronales • Rama PNN (2/2)</div>
+        <h2 class="slide-title">Arquitectura 3: ConvNet de Ranking &amp; Spatial NMS</h2>
+        <div class="slide-subtitle">Filtrado cualitativo y desduplicación euclidiana de detecciones</div>
+      </div>
+      <div class="slide-body">
+        <div class="grid-architecture">
+          <div style="display:flex; flex-direction:column; gap:12px; overflow-y:auto;">
+            <div class="card highlight-emerald" style="padding:16px;">
+              <div class="card-title" style="font-size:16px;">PNNscore (ConvNet 5 Bloques)</div>
+              <ul style="font-size:12px; line-height:1.45; margin-top:4px; padding-left:16px;">
+                <li><b>Entrada:</b> Parches de 64 × 64 px centrados en (<i>c</i><sub>x</sub>, <i>c</i><sub>y</sub>).</li>
+                <li><b>Backbone:</b> 5 bloques (Conv2D 3×3 → BN → ReLU → Pool 2×2).</li>
+                <li><b>Ranking Head:</b> Global Average Pooling → Capa lineal de 512-d con <i>Margin Ranking Loss</i>.</li>
+                <li><b>Corte de Aceptación:</b> <code>PNNscore ≥ -1.00</code>.</li>
+              </ul>
+            </div>
+
+            <div class="card highlight-purple" style="padding:16px;">
+              <div class="card-title" style="font-size:16px;">Spatial NMS por Proximidad Euclidiana</div>
+              <p style="font-size:12px; line-height:1.45;">Supresión no máxima por distancia física en el plano:</p>
+              <div class="formula-box" style="padding:10px; font-size:11.5px; margin:8px 0;">
+                Si <i>d</i>((<i>c</i><sub>x</sub><sup>i</sup>, <i>c</i><sub>y</sub><sup>i</sup>), (<i>c</i><sub>x</sub><sup>j</sup>, <i>c</i><sub>y</sub><sup>j</sup>)) &lt; 10 px (≈ 8.91 µm):<br>
+                → Conservar detección con mayor score; descartar duplicado.
+              </div>
+              <p style="font-size:11.5px; color:#cbd5e1;">Elimina conteos dobles generados por el solapamiento de tiles de 256 px.</p>
+            </div>
+          </div>
+
+          <div class="diagram-card">
+            <div class="diagram-header">
+              <span style="color:#10b981;">📐 Diagrama Arquitectural del Modelo</span>
+              <span class="pill pill-emerald">5-Stage ConvNet + Spatial NMS</span>
+            </div>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 520" width="1000" height="520" style="background:#090d16; font-family:'Inter',system-ui,-apple-system,sans-serif;">
+  <defs>
+    <linearGradient id="bgGrad3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1120"/>
+      <stop offset="100%" stop-color="#050811"/>
+    </linearGradient>
+    <linearGradient id="patchGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#1d4ed8"/>
+    </linearGradient>
+    <linearGradient id="cblockGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#059669"/>
+      <stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+    <linearGradient id="rankGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#d97706"/>
+      <stop offset="100%" stop-color="#b45309"/>
+    </linearGradient>
+    <linearGradient id="nmsGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#8b5cf6"/>
+      <stop offset="100%" stop-color="#6d28d9"/>
+    </linearGradient>
+    <marker id="arrow3" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <rect width="1000" height="520" fill="url(#bgGrad3)" rx="12" stroke="#1e293b" stroke-width="2"/>
+
+  <!-- Title Badge -->
+  <g transform="translate(30, 25)">
+    <rect width="940" height="42" rx="8" fill="#111827" stroke="#334155" stroke-width="1"/>
+    <text x="20" y="26" fill="#10b981" font-size="16" font-weight="700">ARQUITECTURA ConvNet DE RANKING (PNNscore) &amp; SPATIAL NMS • RAMA PNN (2/2)</text>
+    <text x="690" y="26" fill="#94a3b8" font-size="12" font-weight="500">Filtrado Cualitativo y Desduplicación Espacial</text>
+  </g>
+
+  <!-- 1. INPUT PATCH -->
+  <g transform="translate(35, 95)">
+    <rect width="125" height="295" rx="10" fill="#111827" stroke="#3b82f6" stroke-width="1.5"/>
+    <rect x="22" y="25" width="80" height="80" rx="8" fill="url(#patchGrad)" opacity="0.85"/>
+    <circle cx="62" cy="65" r="24" fill="none" stroke="#93c5fd" stroke-width="2" stroke-dasharray="3,2"/>
+    <circle cx="62" cy="65" r="3" fill="#fde047"/>
+    <text x="62" y="135" fill="#bae6fd" font-size="12.5" font-weight="700" text-anchor="middle">Parche 64 × 64 px</text>
+    <text x="62" y="155" fill="#94a3b8" font-size="11" text-anchor="middle">Centrado en (c_x, c_y)</text>
+    <text x="62" y="175" fill="#94a3b8" font-size="11" text-anchor="middle">Normalizado [0, 1]</text>
+    <rect x="12" y="205" width="100" height="65" rx="6" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <text x="62" y="224" fill="#60a5fa" font-size="10" font-weight="600" text-anchor="middle">Candidato de</text>
+    <text x="62" y="240" fill="#93c5fd" font-size="11" font-weight="700" text-anchor="middle">Faster R-CNN</text>
+    <text x="62" y="255" fill="#cbd5e1" font-size="9" text-anchor="middle">Canal WFA Raw</text>
+  </g>
+
+  <path d="M 160 240 L 185 240" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow3)"/>
+
+  <!-- 2. FIVE CONVOLUTIONAL BLOCKS -->
+  <g transform="translate(190, 85)">
+    <rect width="270" height="315" rx="10" fill="#0f172a" stroke="#10b981" stroke-width="1.5"/>
+    <text x="135" y="26" fill="#34d399" font-size="13" font-weight="700" text-anchor="middle">5 BLOQUES CONVOLUCIONALES</text>
+
+    <!-- Block 1 -->
+    <rect x="15" y="38" width="240" height="42" rx="6" fill="url(#cblockGrad)" opacity="0.85"/>
+    <text x="25" y="56" fill="#ffffff" font-size="11" font-weight="700">Bloque 1:</text>
+    <text x="85" y="56" fill="#e2e8f0" font-size="10.5">Conv2D 3×3 (32) + BN + ReLU + Pool /2</text>
+    <text x="245" y="72" fill="#a7f3d0" font-size="10" font-weight="700" text-anchor="end">[32×32×32]</text>
+
+    <!-- Block 2 -->
+    <rect x="15" y="88" width="240" height="42" rx="6" fill="url(#cblockGrad)" opacity="0.88"/>
+    <text x="25" y="106" fill="#ffffff" font-size="11" font-weight="700">Bloque 2:</text>
+    <text x="85" y="106" fill="#e2e8f0" font-size="10.5">Conv2D 3×3 (64) + BN + ReLU + Pool /2</text>
+    <text x="245" y="122" fill="#a7f3d0" font-size="10" font-weight="700" text-anchor="end">[16×16×64]</text>
+
+    <!-- Block 3 -->
+    <rect x="15" y="138" width="240" height="42" rx="6" fill="url(#cblockGrad)" opacity="0.91"/>
+    <text x="25" y="156" fill="#ffffff" font-size="11" font-weight="700">Bloque 3:</text>
+    <text x="85" y="156" fill="#e2e8f0" font-size="10.5">Conv2D 3×3 (128) + BN + ReLU + Pool /2</text>
+    <text x="245" y="172" fill="#a7f3d0" font-size="10" font-weight="700" text-anchor="end">[8×8×128]</text>
+
+    <!-- Block 4 -->
+    <rect x="15" y="188" width="240" height="42" rx="6" fill="url(#cblockGrad)" opacity="0.94"/>
+    <text x="25" y="206" fill="#ffffff" font-size="11" font-weight="700">Bloque 4:</text>
+    <text x="85" y="206" fill="#e2e8f0" font-size="10.5">Conv2D 3×3 (256) + BN + ReLU + Pool /2</text>
+    <text x="245" y="222" fill="#a7f3d0" font-size="10" font-weight="700" text-anchor="end">[4×4×256]</text>
+
+    <!-- Block 5 -->
+    <rect x="15" y="238" width="240" height="42" rx="6" fill="#065f46" stroke="#10b981" stroke-width="1"/>
+    <text x="25" y="256" fill="#ffffff" font-size="11" font-weight="700">Bloque 5:</text>
+    <text x="85" y="256" fill="#e2e8f0" font-size="10.5">Conv2D 3×3 (512) + BN + ReLU + Pool /2</text>
+    <text x="245" y="272" fill="#fde047" font-size="10" font-weight="700" text-anchor="end">[2×2×512]</text>
+
+    <text x="135" y="302" fill="#6ee7b7" font-size="10" text-anchor="middle">Campos Receptivos Progresivos</text>
+  </g>
+
+  <path d="M 460 240 L 485 240" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow3)"/>
+
+  <!-- 3. GLOBAL POOLING & RANKING HEAD -->
+  <g transform="translate(490, 85)">
+    <rect width="190" height="315" rx="10" fill="#0f172a" stroke="#d97706" stroke-width="1.5"/>
+    <text x="95" y="26" fill="#fbbf24" font-size="13" font-weight="700" text-anchor="middle">RANKING LOSS HEAD</text>
+
+    <rect x="15" y="42" width="160" height="60" rx="6" fill="#1e293b" stroke="#f59e0b" stroke-width="1"/>
+    <text x="95" y="64" fill="#ffffff" font-size="11" font-weight="700" text-anchor="middle">Global Avg Pooling</text>
+    <text x="95" y="82" fill="#fef08a" font-size="11" font-family="monospace" text-anchor="middle">[512-dim Vector]</text>
+
+    <rect x="15" y="115" width="160" height="60" rx="6" fill="#1e293b" stroke="#f59e0b" stroke-width="1"/>
+    <text x="95" y="137" fill="#ffffff" font-size="11" font-weight="700" text-anchor="middle">Dense Layer (512 → 1)</text>
+    <text x="95" y="155" fill="#fde68a" font-size="10" text-anchor="middle">Margin Ranking Loss</text>
+
+    <!-- Score decision box -->
+    <rect x="15" y="190" width="160" height="100" rx="8" fill="url(#rankGrad)" opacity="0.9"/>
+    <text x="95" y="215" fill="#ffffff" font-size="13" font-weight="800" text-anchor="middle">PNNscore ∈ ℝ</text>
+    <rect x="25" y="228" width="140" height="50" rx="6" fill="#1e1b4b" stroke="#a78bfa" stroke-width="1"/>
+    <text x="95" y="246" fill="#c7d2fe" font-size="10" font-weight="600" text-anchor="middle">Corte de Aceptación</text>
+    <text x="95" y="264" fill="#34d399" font-size="13" font-weight="800" text-anchor="middle">Score ≥ -1.00</text>
+  </g>
+
+  <path d="M 680 240 L 705 240" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow3)"/>
+
+  <!-- 4. SPATIAL NMS MODULE (DESDUPLICACIÓN) -->
+  <g transform="translate(710, 85)">
+    <rect width="255" height="315" rx="10" fill="#0f172a" stroke="#8b5cf6" stroke-width="1.5"/>
+    <text x="127" y="26" fill="#c084fc" font-size="13" font-weight="700" text-anchor="middle">SPATIAL NMS POR DISTANCIA</text>
+
+    <!-- Formula Box -->
+    <rect x="15" y="42" width="225" height="110" rx="8" fill="#1e1b4b" stroke="#7c3aed" stroke-width="1"/>
+    <text x="127" y="66" fill="#c4b5fd" font-size="11" font-weight="700" text-anchor="middle">Criterio de Distancia Euclidiana</text>
+    <text x="127" y="92" fill="#6ee7b7" font-size="11" font-family="monospace" text-anchor="middle">d(p_i, p_j) &lt; 10 px</text>
+    <text x="127" y="112" fill="#a7f3d0" font-size="10.5" text-anchor="middle">Distancia Física ≈ 8.91 µm</text>
+    <text x="127" y="134" fill="#fde047" font-size="10" font-weight="600" text-anchor="middle">Elimina Duplicados por Overlap</text>
+
+    <!-- Final result box -->
+    <rect x="15" y="165" width="225" height="125" rx="8" fill="url(#nmsGrad)" opacity="0.9"/>
+    <text x="127" y="190" fill="#ffffff" font-size="12" font-weight="700" text-anchor="middle">DETECCIONES FINALES PNN</text>
+    <circle cx="85" cy="225" r="14" fill="#1e293b" stroke="#34d399" stroke-width="2"/>
+    <text x="85" y="229" fill="#34d399" font-size="9" font-weight="700" text-anchor="middle">PNN_1</text>
+    <circle cx="165" cy="225" r="14" fill="#1e293b" stroke="#34d399" stroke-width="2"/>
+    <text x="165" y="229" fill="#34d399" font-size="9" font-weight="700" text-anchor="middle">PNN_2</text>
+    
+    <text x="127" y="258" fill="#e9d5ff" font-size="10" text-anchor="middle">• Centroides Únicos Invariantes</text>
+    <text x="127" y="274" fill="#a7f3d0" font-size="10" font-weight="600" text-anchor="middle">• Pasa al Disco Continuo (12 µm)</text>
+  </g>
+
+  <!-- Footer Banner -->
+  <g transform="translate(30, 455)">
+    <rect width="940" height="42" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+    <text x="30" y="26" fill="#10b981" font-size="12" font-weight="600">FILTRADO CIENTÍFICO:</text>
+    <text x="210" y="26" fill="#cbd5e1" font-size="11.5">Score continuo permisivo (-1.00) rescata mallas tenues; Spatial NMS (&lt;10 px) garantiza que ninguna PNN se cuente dos veces.</text>
+  </g>
+</svg>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 8: Cuantificación de PNN: Disco Continuo Estandarizado -->
+    <section class="slide" id="slide-8">
+      <div class="slide-header">
+        <div class="slide-category">07. Cuantificación Pericelular</div>
+        <h2 class="slide-title">Cuantificación de PNN: Disco Continuo Estandarizado</h2>
+        <div class="slide-subtitle">Medición geométrica uniforme para comparar subpoblaciones PV+ y PV- sin sesgo metodológico</div>
+      </div>
+      <div class="slide-body">
+        <div class="grid-2">
+          <div class="card highlight-cyan" style="border-color: rgba(6, 182, 212, 0.4);">
+            <div class="card-title" style="color: var(--accent-cyan);">🔵 Disco Continuo de Radio Fijo (12.0 µm)</div>
+            <p>Se construye un disco geométrico continuo centrado en el centroide de la PNN (canal WFA):</p>
+            <div class="formula-box">
+              Radio = 12.0 µm &emsp; (≈ 13.46 px a 0.8913 µm/px)<br>
+              Área = π · <i>R</i>² ≈ 452.39 px² ≈ <b>410.71 µm²</b><br>
+              Métricas: <code>wfa_mean</code> (intensidad media), <code>wfa_sum</code> (señal integrada)
+            </div>
+            <ul>
+              <li><strong>Muestreo integral:</strong> Mide la fluorescencia en toda la circunferencia, capturando condensación pericelular y ramificaciones proximales.</li>
+              <li><strong>Medición cruda de 8 bits (0 - 255):</strong> Sin binarizaciones de Otsu artificiales que censuren intensidades intermedias.</li>
+              <li><strong>Invariancia geométrica:</strong> Proporciona una superficie estandarizada idéntica de 410.71 µm² para todas las detecciones.</li>
+            </ul>
+          </div>
+
+          <div class="card highlight-blue">
+            <div class="card-title" style="color: #60A5FA;">⚖️ Justificación Metodológica: Comparabilidad Libre de Sesgos</div>
+            <p>La adopción del disco continuo responde a una necesidad biológica y estadística fundamental:</p>
+            <ul>
+              <li><strong>Heterogeneidad de Subpoblaciones:</strong> En la corteza, entre el 15% y el 40% de las PNNs envuelven neuronas que no expresan PV detectable ("redes huecas").</li>
+              <li><strong>Ausencia de Máscara Somática en PV-:</strong> Si la cuantificación dependiera del contorno de una célula o de una máscara celular previa, las PNNs PV- no tendrían referencia somática y se medirían con un criterio dispar o quedarían excluidas.</li>
+              <li><strong>Mismo Marco para Ambas Poblaciones:</strong> Al evaluar un disco circular invariante centrado en el centroide de la PNN, <strong>tanto las PNNs PV+ como las PV- se miden bajo exactamente la misma superficie física</strong>, permitiendo compararlas de manera directa, robusta y libre de sesgos metodológicos.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 9: Colocalización Topológica -->
+    <section class="slide" id="slide-9">
+      <div class="slide-header">
+        <div class="slide-category">08. Fisiología Computacional</div>
+        <h2 class="slide-title">Colocalización Topológica y las 3 Subpoblaciones</h2>
+        <div class="slide-subtitle">Criterio estricto de inclusión espacial en el plano 2D</div>
+      </div>
+      <div class="slide-body">
+        <div class="card highlight-blue" style="margin-bottom: 8px;">
+          <div class="card-title">Criterio de Colocalización Celular</div>
+          <div class="formula-box" style="margin: 4px 0 10px 0;">
+            Una PNN colocaliza con PV &hArr; (c_x, c_y)_{PNN} &isin; M&aacute;scara_{Soma\_PV}
+          </div>
+          <p style="font-size: 13.5px;">Si el centroide predicho por Faster R-CNN en el canal WFA cae dentro del contorno del soma segmentado por Cellpose en el canal PV546, la PNN se vincula a esa interneurona específica.</p>
+        </div>
+
+        <div class="grid-3">
+          <div class="card highlight-emerald">
+            <span class="pill pill-emerald" style="width: fit-content; margin-bottom: 8px;">Subpoblación 1</span>
+            <div class="card-title">PV+ / PNN+</div>
+            <p><strong>Interneurona Madura Consolidada:</strong></p>
+            <ul>
+              <li>Soma PV+ nítido con envoltura de PNN condensada.</li>
+              <li>Representa la subpoblación de control de plasticidad crítica en S1.</li>
+              <li>Permite correlacionar área somática vs. intensidad de WFA.</li>
+            </ul>
+          </div>
+
+          <div class="card highlight-purple">
+            <span class="pill pill-purple" style="width: fit-content; margin-bottom: 8px;">Subpoblación 2</span>
+            <div class="card-title">PV- / PNN+</div>
+            <p><strong>Red Hueca (PNN sin Soma):</strong></p>
+            <ul>
+              <li>PNN condensada sin fluorescencia de PV detectable en el soma.</li>
+              <li>Células no-PV recubiertas (ej. piramidales) o interneuronas con expresión de PV por debajo del umbral de detección.</li>
+              <li><strong>Imposible de medir con el método de la dona.</strong></li>
+            </ul>
+          </div>
+
+          <div class="card highlight-amber">
+            <span class="pill pill-amber" style="width: fit-content; margin-bottom: 8px;">Subpoblación 3</span>
+            <div class="card-title">PV+ / PNN-</div>
+            <p><strong>Interneurona Desnuda:</strong></p>
+            <ul>
+              <li>Soma PV+ identificado por Cellpose sin PNN detectable.</li>
+              <li>Neuronas inmaduras o subpoblación no condensada.</li>
+              <li>Permite cuantificar el porcentaje de cobertura de la red.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 10: Estandarización Espacial Invariante -->
+    <section class="slide" id="slide-10">
+      <div class="slide-header">
+        <div class="slide-category">09. Estandarización de Datos</div>
+        <h2 class="slide-title">Estandarización Espacial Invariante (ROI S1)</h2>
+        <div class="slide-subtitle">Solución de ingeniería frente a las limitaciones de registro del atlas CCFv3</div>
+      </div>
+      <div class="slide-body">
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-title">El Problema de la Normalización Estereotáxica</div>
+            <p>En experimentos con secciones de grosor limitado y montajes histológicos manuales:</p>
+            <ul>
+              <li>Los cortes presentan pequeñas variaciones angulares (oblicuidad respecto al plano coronal puro).</li>
+              <li>Las deformaciones elásticas de deshidratación y cubreobjetos distorsionan el registro no rígido con el CCFv3 de Allen.</li>
+              <li>Intentar forzar el atlas introduce sesgos espaciales incontrolados en las coordenadas corticales.</li>
+            </ul>
+          </div>
+
+          <div class="card highlight-emerald">
+            <div class="card-title">La Solución Implementada: ROI Fija en Napari</div>
+            <p>Definición de un marco de muestreo constante calibrado específicamente en micrones reales:</p>
+            <div class="formula-box">
+              Dimensiones: 661 × 661 píxeles (Objetivo 10x Confocal)<br>Calibración: 0.8913 µm/px &emsp;→&emsp; Lado real: 589.92 µm<br>Área total = 348,015 µm² = <b>0.348015 mm²</b>
+            </div>
+            <ul>
+              <li>Ubicada manualmente por el investigador en la corteza somatosensorial primaria (S1).</li>
+              <li>Todas las densidades celulares se reportan automáticamente como:
+                <br><strong>Densidad = N / 0.348015 mm²</strong>.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 11: Parámetros y Calibración del Pipeline -->
+    <section class="slide" id="slide-11">
+      <div class="slide-header">
+        <div class="slide-category">10. Parámetros y Calibración</div>
+        <h2 class="slide-title">Parámetros de Calibración e Inferencia del Pipeline</h2>
+        <div class="slide-subtitle">Valores validados para adquisición confocal, inferencia neuronal y análisis cuantitativo</div>
+      </div>
+      <div class="slide-body">
+        <div class="grid-2">
+          <div class="card highlight-emerald">
+            <div class="card-title" style="color: var(--accent-emerald);">📐 Calibración Espacial y Óptica</div>
+            <p style="font-size: 13px; color: #94A3B8; margin-bottom: 10px;">Parámetros del sistema confocal y estandarización espacial en corteza S1:</p>
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr><th>Parámetro</th><th>Valor</th><th>Función Metodológica</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td><code>pixel_size_um</code></td><td><code>0.8913</code></td><td>Factor de escala confocal a 10x (CZI Zeiss)</td></tr>
+                  <tr><td><code>intensity_depth</code></td><td><code>8 bits (TIFF 8-bit)</code></td><td>Rango dinámico nativo (0 - 255) sin reescalado</td></tr>
+                  <tr><td><code>roi_dimensions</code></td><td><code>661 × 661 px</code></td><td>Área estandarizada constante (0.348015 mm²)</td></tr>
+                  <tr><td><code>pnn_radius_um</code></td><td><code>12.0 µm</code></td><td>Radio del disco de cuantificación pericelular</td></tr>
+                  <tr><td><code>pnn_disk_area</code></td><td><code>410.71 µm²</code></td><td>Superficie circular uniforme para medir WFA</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card highlight-blue">
+            <div class="card-title" style="color: #60A5FA;">🧠 Modelos de Inferencia y Filtrado</div>
+            <p style="font-size: 13px; color: #94A3B8; margin-bottom: 10px;">Parámetros de segmentación somática y detección de redes:</p>
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr><th>Parámetro</th><th>Valor</th><th>Función Metodológica</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td><code>cellpose_diameter</code></td><td><code>20.0 px</code></td><td>Diámetro nominal para segmentación somática PV</td></tr>
+                  <tr><td><code>flow_threshold</code></td><td><code>0.80</code></td><td>Sensibilidad del campo vectorial de flujo</td></tr>
+                  <tr><td><code>cellprob_threshold</code></td><td><code>-1.50</code></td><td>Corte permisivo para detección somática en 8-bit</td></tr>
+                  <tr><td><code>PNNloc_threshold</code></td><td><code>0.20</code></td><td>Umbral de propuesta de región Faster R-CNN</td></tr>
+                  <tr><td><code>PNNscore_threshold</code></td><td><code>-1.00</code></td><td>Corte permisivo de la ConvNet de ranking</td></tr>
+                  <tr><td><code>nms_distance_px</code></td><td><code>10 px</code></td><td>Spatial NMS por proximidad (≈ 8.91 µm)</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 12: Flujograma Integrado -->
+    <section class="slide" id="slide-12">
+      <div class="slide-header">
+        <div class="slide-category">11. Diagrama de Flujo del Pipeline</div>
+        <h2 class="slide-title">Flujograma Global: Del Confocal a la Estadística</h2>
+        <div class="slide-subtitle">Arquitectura paralela de doble canal con colocalización y control de calidad</div>
+      </div>
+      <div class="slide-body" style="padding-bottom: 10px;">
+        <div class="svg-wrapper" style="max-height: 480px;">
+          <!-- Embed flowchart vector -->
+          <div style="width: 100%; max-height: 500px; overflow: auto; text-align: center;"><svg id="mermaid-1789736972438" width="100%" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="max-width: 1285.890625px;" viewBox="-8 -8 1285.890625 1499.375" role="graphics-document document" aria-roledescription="flowchart-v2"><style>#mermaid-1789736972438{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;fill:#333;}#mermaid-1789736972438 .error-icon{fill:#552222;}#mermaid-1789736972438 .error-text{fill:#552222;stroke:#552222;}#mermaid-1789736972438 .edge-thickness-normal{stroke-width:2px;}#mermaid-1789736972438 .edge-thickness-thick{stroke-width:3.5px;}#mermaid-1789736972438 .edge-pattern-solid{stroke-dasharray:0;}#mermaid-1789736972438 .edge-pattern-dashed{stroke-dasharray:3;}#mermaid-1789736972438 .edge-pattern-dotted{stroke-dasharray:2;}#mermaid-1789736972438 .marker{fill:#333333;stroke:#333333;}#mermaid-1789736972438 .marker.cross{stroke:#333333;}#mermaid-1789736972438 svg{font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:16px;}#mermaid-1789736972438 .label{font-family:"trebuchet ms",verdana,arial,sans-serif;color:#333;}#mermaid-1789736972438 .cluster-label text{fill:#333;}#mermaid-1789736972438 .cluster-label span,#mermaid-1789736972438 p{color:#333;}#mermaid-1789736972438 .label text,#mermaid-1789736972438 span,#mermaid-1789736972438 p{fill:#333;color:#333;}#mermaid-1789736972438 .node rect,#mermaid-1789736972438 .node circle,#mermaid-1789736972438 .node ellipse,#mermaid-1789736972438 .node polygon,#mermaid-1789736972438 .node path{fill:#ECECFF;stroke:#9370DB;stroke-width:1px;}#mermaid-1789736972438 .flowchart-label text{text-anchor:middle;}#mermaid-1789736972438 .node .katex path{fill:#000;stroke:#000;stroke-width:1px;}#mermaid-1789736972438 .node .label{text-align:center;}#mermaid-1789736972438 .node.clickable{cursor:pointer;}#mermaid-1789736972438 .arrowheadPath{fill:#333333;}#mermaid-1789736972438 .edgePath .path{stroke:#333333;stroke-width:2.0px;}#mermaid-1789736972438 .flowchart-link{stroke:#333333;fill:none;}#mermaid-1789736972438 .edgeLabel{background-color:#e8e8e8;text-align:center;}#mermaid-1789736972438 .edgeLabel rect{opacity:0.5;background-color:#e8e8e8;fill:#e8e8e8;}#mermaid-1789736972438 .labelBkg{background-color:rgba(232, 232, 232, 0.5);}#mermaid-1789736972438 .cluster rect{fill:#ffffde;stroke:#aaaa33;stroke-width:1px;}#mermaid-1789736972438 .cluster text{fill:#333;}#mermaid-1789736972438 .cluster span,#mermaid-1789736972438 p{color:#333;}#mermaid-1789736972438 div.mermaidTooltip{position:absolute;text-align:center;max-width:200px;padding:2px;font-family:"trebuchet ms",verdana,arial,sans-serif;font-size:12px;background:hsl(80, 100%, 96.2745098039%);border:1px solid #aaaa33;border-radius:2px;pointer-events:none;z-index:100;}#mermaid-1789736972438 .flowchartTitleText{text-anchor:middle;font-size:18px;fill:#333;}#mermaid-1789736972438 :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}</style><g><marker id="mermaid-1789736972438_flowchart-pointEnd" class="marker flowchart" viewBox="0 0 10 10" refX="6" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker><marker id="mermaid-1789736972438_flowchart-pointStart" class="marker flowchart" viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></path></marker><marker id="mermaid-1789736972438_flowchart-circleEnd" class="marker flowchart" viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="mermaid-1789736972438_flowchart-circleStart" class="marker flowchart" viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><circle cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;"></circle></marker><marker id="mermaid-1789736972438_flowchart-crossEnd" class="marker cross flowchart" viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"></path></marker><marker id="mermaid-1789736972438_flowchart-crossStart" class="marker cross flowchart" viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;"></path></marker><g class="root"><g class="clusters"><g class="cluster default flowchart-label" id="Salidas"><rect style="" rx="0" ry="0" x="86.51953125" y="1339.203125" width="1144.0546875" height="144.171875"></rect><g class="cluster-label" transform="translate(578.6484375, 1339.203125)"><foreignObject width="159.796875" height="26.390625"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">6. Salidas y Validación</span></div></foreignObject></g></g><g class="cluster default flowchart-label" id="Biomodelo"><rect style="" rx="0" ry="0" x="72.62109375" y="830.296875" width="1137.9140625" height="458.90625"></rect><g class="cluster-label" transform="translate(496.171875, 830.296875)"><foreignObject width="290.8125" height="26.390625"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">5. Cuantificación Pericelular Estandarizada</span></div></foreignObject></g></g><g class="cluster default flowchart-label" id="RamaPNN"><rect style="" rx="0" ry="0" x="886.359375" y="234.171875" width="383.53125" height="546.125"></rect><g class="cluster-label" transform="translate(965.625, 234.171875)"><foreignObject width="225" height="26.390625"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">4. Rama PNN: Redes de Lupori</span></div></foreignObject></g></g><g class="cluster default flowchart-label" id="RamaPV"><rect style="" rx="0" ry="0" x="0" y="401.953125" width="430.0625" height="378.34375"></rect><g class="cluster-label" transform="translate(90.375, 401.953125)"><foreignObject width="249.3125" height="26.390625"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">3. Rama PV: Cellpose SAM v2</span></div></foreignObject></g></g><g class="cluster default flowchart-label" id="ROI"><rect style="" rx="0" ry="0" x="450.0625" y="401.953125" width="416.296875" height="117.78125"></rect><g class="cluster-label" transform="translate(559.9296875, 401.953125)"><foreignObject width="196.5625" height="26.390625"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">2. Estandarización Espacial</span></div></foreignObject></g></g><g class="cluster default flowchart-label" id="Entrada"><rect style="" rx="0" ry="0" x="120.4921875" y="0" width="678.72265625" height="351.953125"></rect><g class="cluster-label" transform="translate(374.470703125, 0)"><foreignObject width="170.765625" height="26.390625"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">1. Entrada y Calibración</span></div></foreignObject></g></g></g><g class="edgePaths"><path d="M460.648,92.781L460.648,96.948C460.648,101.115,460.648,109.448,460.648,116.898C460.648,124.348,460.648,130.915,460.648,134.198L460.648,137.481" id="L-A-B-0" class=" edge-thickness-normal edge-pattern-solid flowchart-link LS-A LE-B" style="fill:none;" marker-end="url(#mermaid-1789736972438_flowchart-pointEnd)"></path><path d="M550.124,184.172L568.139,188.339C586.153,192.505,622.182,200.839,640.196,209.172C658.211,217.505,658.211,225.839,658.211,233.289C658.211,240.739,658.211,247.305,658.211,250.589L658.211,253.872" id="L-B-C-0" class=" edge-thickness-normal edge-pattern-solid flowchart-link LS-B LE-C" style="fill:none;" marker-end="url(#mermaid-1789736972438_flowchart-pointEnd)"></path><path d="M658.211,326.953L658.211,331.12C658.211,335.286,658.211,343.62,658.211,351.953C658.211,360.286,658.211,368.62,658.211,376.953C658.211,385.286,658.211,393.62,658.211,401.07C658.211,408.52,658.211,415.086,658.211,418.37L658.211,421.653" id="L-C-D-0" class=" edge-thickness-normal edge-pattern-solid flowchart-link LS-C LE-D" style="fill:none;" marker-end="url(#mermaid-1789736972438_flowchart-pointEnd)"></path><path d="M349.409,184.172L327.013,188.339C304.616,192.505,259.824,200.839,237.428,209.172C215.031,217.505,215.031,225.839,215.031,239.82C215.031,253.802,215.031,273.432,215.031,293.063C215.031,312.693,215.031,332.323,215.031,346.305C215.031,360.286,215.031,368.62,215.031,376.953C215.031,385.286,215.031,393.62,215.031,403.269C215.031,412.918,215.031,423.883,215.031,429.366L215.031,434.848" id="L-B-E-0" class=" edge-thickness-normal edge-pattern-solid flowchart-link LS-B LE-E" style="fill:none;" marker-end="url(#mermaid-1789736972438_flowchart-pointEnd)"></path><path d="M215.031,481.539L215.031,487.905C215.031,494.271,215.031,507.003,215.031,517.535C215.031,528.068,215.031,536.401,215.031,543.851C215.031,551.301,215.031,557.868,215.031,561.151L215.031,564.434" id="L-E-F-0" class=" edge-thickness-normal edge-pattern-solid flowchart-link LS-E LE-F" style="fill:none;" marker-end="url(#mermaid-1789736972438_flowchart-pointEnd)"></path><path d="M215.031,637.516L215.031,641.682C215.031,645.849,215.031,654.182,215.031,661.632C215.031,669.082,215.031,675.649,215.031,678.932L215.031,682.216" id="L-F-G-0" class=" edge-thickness-normal edge-pattern-solid flowchart-link LS-F LE-G" style="fill:none;" marker-end="url(#mermaid-1789736972438_flowchart-pointEnd)"></path><path d="M574.727,183.997L598.051,188.193C621.376,192.389,668.026,200.78,691.351,209.143C714.676,217.505,714.676,225.839,761.123,237.531C807.571,249.224,900.467,264.276,946.914,271.802L993.362,279.328" id="L-B-H-0" class=" edge-thickness-normal edge-pattern-solid flowchart-link LS-B LE-H" style="fill:none;" marker-end="url(#mermaid-1789736972438_flowchart-pointEnd)"></path><path d="M1078.125,313.758L1078.125,320.124C1078.125,326.49,1078.125,339.221,1078.125,349.754C1078.125,360.286,1078.125,368.62,1078.125,376.953C1078.125,385.286,1078.125,393.62,1078.125,401.07C1078.125,408.52,1078.125,415.086,1078.125,418.37L1078.125,421.653" id="L-H-I-0" class=" edge-thickness-normal edge-pattern-solid flowchart-link LS-H LE-I" style="fill:none;" marker-end="url(#mermaid-1789736972438_flowchart-pointEnd)"></path><path d="M1078.125,494.734L1078.125,498.901C1078.125,503.068,1078.125,511.401,1078.125,519.734C1078.125,528.068,1078.125,536.401,1078.125,543.851C1078.125,551.301,1078.125,557.868,1078.125,561.151L1078.125,564.434" id="L-I-J-0" class=" edge-thickness-normal edge-pattern-solid flowchart-link LS-I LE-J" style="fill:none;" marker-end="url(#mermaid-1789736972438_flowchart-pointEnd)"></path><path d="M1078.125,637.516L1078.125,641.682C1078.125,645.849,1078.125,654.182,1078.125,661.632C1078.125,669.082,1078.125,675.649,1078.125,678.932L1078.125,682.216" id="L-J-K-0" class=" edge-thickness-normal edge-pattern-solid flowchart-link LS-J LE-K" style="fill:none;" marker-end="url(#mermaid-1789736972438_flowchart-pointEnd)"></path><path d="M215.031,755.297L215.031,759.464C215.031,763.63,215.031,771.964,215.031,780.297C215.031,788.63,215.031,796.964,215.031,805.297C215.031,813.63,215.031,821.964,246.001,832.719C276.97,843.475,338.909,856.654,369.878,863.243L400.847,869.832" id="L-G-L-0" class=" edge-thickness-normal edge-pattern-solid flowchart-link LS-G LE-L" style="fill:none;" marker-end="url(#mermaid-1789736972438_flowchart-pointEnd)"></path><path d="M1078.125,755.297L1078.125,759.464C1078.125,763.63,1078.125,771.964,1078.125,780.297C1078.125,788.63,1078.125,796.964,1078.125,805.297C1078.125,813.63,1078.125,821.964,1036.918,833.732C995.711,845.501,913.298,860.705,872.091,868.307L830.884,875.908" id="L-K-L-0" class=" edge-thickness-normal edge-pattern-solid flowchart-link LS-K LE-L" style="fill:none;" marker-end="url(#mermaid-1789736972438_flowchart-pointEnd)"></path><path d="M494.731,975.859L486.359,980.026C477.988,984.193,461.244,992.526,452.872,999.976C444.5,1007.426,444.5,1013.993,444.5,1017.276L444.5,1020.559" id="L-L-M-0" class=" edge-thickness-normal edge-pattern-solid flowchart-link LS-L LE-M" style="fill:none;" marker-end="url(#mermaid-1789736972438_flowchart-pointEnd)"></path><path d="M444.5,1093.641L444.5,1097.807C444.5,1101.974,444.5,1110.307,444.5,1117.757C444.5,1125.207,444.5,1131.774,444.5,1135.057L444.5,1138.341" id="L-M-N-0" class=" edge-thickness-normal edge-pattern-solid flowchart-link LS-M LE-N" style="fill:none;" marker-end="url(#mermaid-1789736972438_flowchart-pointEnd)"></path><path d="M739.018,975.859L747.531,980.026C756.044,984.193,773.071,992.526,781.584,1006.508C790.098,1020.49,790.098,1040.12,790.098,1059.75C790.098,1079.38,790.098,1099.01,790.098,1118.707C790.098,1138.403,790.098,1158.165,790.098,1168.046L790.098,1177.927" id="L-L-O-0" class=" edge-thickness-normal edge-pattern-solid flowchart-link LS-L LE-O" style="fill:none;" marker-end="url(#mermaid-1789736972438_flowchart-pointEnd)"></path><path d="M303.82,1251.334L285.093,1257.646C266.366,1263.957,228.911,1276.58,210.184,1287.058C191.457,1297.536,191.457,1305.87,191.457,1314.203C191.457,1322.536,191.457,1330.87,198.949,1340.86C206.441,1350.851,221.425,1362.498,228.917,1368.322L236.409,1374.146" id="L-N-P-0" class=" edge-thickness-normal edge-pattern-solid flowchart-link LS-N LE-P" style="fill:none;" marker-end="url(#mermaid-1789736972438_flowchart-pointEnd)"></path><path d="M702.411,1224.617L656.802,1235.382C611.193,1246.146,519.975,1267.674,474.367,1282.605C428.758,1297.536,428.758,1305.87,428.758,1314.203C428.758,1322.536,428.758,1330.87,416.782,1341.008C404.806,1351.147,380.853,1363.09,368.877,1369.062L356.901,1375.033" id="L-O-P-0" class=" edge-thickness-normal edge-pattern-solid flowchart-link LS-O LE-P" style="fill:none;" marker-end="url(#mermaid-1789736972438_flowchart-pointEnd)"></path><path d="M447.51,1264.203L447.718,1268.37C447.926,1272.536,448.342,1280.87,448.55,1289.203C448.758,1297.536,448.758,1305.87,448.758,1314.203C448.758,1322.536,448.758,1330.87,465.143,1341.096C481.528,1351.322,514.299,1363.441,530.684,1369.501L547.07,1375.56" id="L-N-Q-0" class=" edge-thickness-normal edge-pattern-solid flowchart-link LS-N LE-Q" style="fill:none;" marker-end="url(#mermaid-1789736972438_flowchart-pointEnd)"></path><path d="M790.098,1224.617L790.098,1235.382C790.098,1246.146,790.098,1267.674,790.098,1282.605C790.098,1297.536,790.098,1305.87,790.098,1314.203C790.098,1322.536,790.098,1330.87,777.96,1341.012C765.823,1351.155,741.549,1363.106,729.411,1369.082L717.274,1375.057" id="L-O-Q-0" class=" edge-thickness-normal edge-pattern-solid flowchart-link LS-O LE-Q" style="fill:none;" marker-end="url(#mermaid-1789736972438_flowchart-pointEnd)"></path><path d="M585.18,1236.738L622.666,1245.482C660.152,1254.226,735.125,1271.715,772.611,1284.626C810.098,1297.536,810.098,1305.87,810.098,1314.203C810.098,1322.536,810.098,1330.87,820.946,1338.906C831.794,1346.943,853.491,1354.683,864.34,1358.553L875.188,1362.422" id="L-N-R-0" class=" edge-thickness-normal edge-pattern-solid flowchart-link LS-N LE-R" style="fill:none;" marker-end="url(#mermaid-1789736972438_flowchart-pointEnd)"></path><path d="M860.773,1224.617L897.533,1235.382C934.294,1246.146,1007.815,1267.674,1044.575,1282.605C1081.336,1297.536,1081.336,1305.87,1081.336,1314.203C1081.336,1322.536,1081.336,1330.87,1077.95,1338.566C1074.564,1346.262,1067.792,1353.32,1064.406,1356.849L1061.02,1360.379" id="L-O-R-0" class=" edge-thickness-normal edge-pattern-solid flowchart-link LS-O LE-R" style="fill:none;" marker-end="url(#mermaid-1789736972438_flowchart-pointEnd)"></path></g><g class="edgeLabels"><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel"></span></div></foreignObject></g></g><g class="edgeLabel"><g class="label" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="edgeLabel"></span></div></foreignObject></g></g></g><g class="nodes"><g class="node default default flowchart-label" id="flowchart-P-31" data-node="true" data-id="P" transform="translate(284.19140625, 1411.2890625)"><rect class="basic label-container" style="" rx="0" ry="0" x="-162.671875" y="-33.890625" width="325.34375" height="67.78125"></rect><g class="label" style="" transform="translate(-155.171875, -26.390625)"><rect></rect><foreignObject width="310.34375" height="52.78125"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">Auditoría Visual en Napari<br>(TIFF de 6 Canales con PV_in_PNN_Mask)</span></div></foreignObject></g></g><g class="node default default flowchart-label" id="flowchart-Q-34" data-node="true" data-id="Q" transform="translate(643.68359375, 1411.2890625)"><rect class="basic label-container" style="" rx="0" ry="0" x="-135.09375" y="-33.890625" width="270.1875" height="67.78125"></rect><g class="label" style="" transform="translate(-127.59375, -26.390625)"><rect></rect><foreignObject width="255.1875" height="52.78125"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">Conteo Manual por Tiles (Página 3)<br>(MARE y Bland-Altman vs Humano)</span></div></foreignObject></g></g><g class="node default default flowchart-label" id="flowchart-R-37" data-node="true" data-id="R" transform="translate(1012.17578125, 1411.2890625)"><rect class="basic label-container" style="" rx="0" ry="0" x="-183.3984375" y="-47.0859375" width="366.796875" height="94.171875"></rect><g class="label" style="" transform="translate(-175.8984375, -39.5859375)"><rect></rect><foreignObject width="351.796875" height="79.171875"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">Bioestadística Experimental (Página 4):<br>Shapiro-Wilk, Mann-Whitney U, Two-Way ANOVA<br>y Matrices Formateadas para GraphPad Prism</span></div></foreignObject></g></g><g class="node default default flowchart-label" id="flowchart-L-22" data-node="true" data-id="L" transform="translate(615.8515625, 915.578125)"><rect class="basic label-container" style="" rx="0" ry="0" x="-209.8203125" y="-60.28125" width="419.640625" height="120.5625"></rect><g class="label" style="" transform="translate(-202.3203125, -52.78125)"><rect></rect><foreignObject width="404.640625" height="105.5625"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">Disco Geométrico Continuo (Radio 12 µm = 410.7 µm²)<br>Centrado en Centroide PNN (Canal WFA)<br>Medición en toda la circunferencia (wfa_mean, wfa_sum)<br>(Medición en Toda el Área Circular)</span></div></foreignObject></g></g><g class="node default default flowchart-label" id="flowchart-M-24" data-node="true" data-id="M" transform="translate(444.5, 1059.75)"><rect class="basic label-container" style="" rx="0" ry="0" x="-175.578125" y="-33.890625" width="351.15625" height="67.78125"></rect><g class="label" style="" transform="translate(-168.078125, -26.390625)"><rect></rect><foreignObject width="336.15625" height="52.78125"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">Colocalización Topológica:<br>¿Centroide PNN dentro de Máscara Soma PV?</span></div></foreignObject></g></g><g class="node default default flowchart-label" id="flowchart-N-26" data-node="true" data-id="N" transform="translate(444.5, 1203.921875)"><rect class="basic label-container" style="" rx="0" ry="0" x="-140.6796875" y="-60.28125" width="281.359375" height="120.5625"></rect><g class="label" style="" transform="translate(-133.1796875, -52.78125)"><rect></rect><foreignObject width="266.359375" height="105.5625"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">3 Subpoblaciones Biológicas:<br>1. PV+/PNN+ (Consolidada)<br>2. PV-/PNN+ (Red Hueca)<br>3. PV+/PNN- (Interneurona Desnuda)</span></div></foreignObject></g></g><g class="node default default flowchart-label" id="flowchart-O-28" data-node="true" data-id="O" transform="translate(790.09765625, 1203.921875)"><rect class="basic label-container" style="" rx="0" ry="0" x="-152.0234375" y="-20.6953125" width="304.046875" height="41.390625"></rect><g class="label" style="" transform="translate(-144.5234375, -13.1953125)"><rect></rect><foreignObject width="289.046875" height="26.390625"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">Fondo Difuso de Neuropilo (M_wfa == 0)</span></div></foreignObject></g></g><g class="node default default flowchart-label" id="flowchart-H-13" data-node="true" data-id="H" transform="translate(1078.125, 293.0625)"><rect class="basic label-container" style="" rx="0" ry="0" x="-79.53125" y="-20.6953125" width="159.0625" height="41.390625"></rect><g class="label" style="" transform="translate(-72.03125, -13.1953125)"><rect></rect><foreignObject width="144.0625" height="26.390625"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">Canal WFA647 Raw</span></div></foreignObject></g></g><g class="node default default flowchart-label" id="flowchart-I-15" data-node="true" data-id="I" transform="translate(1078.125, 460.84375)"><rect class="basic label-container" style="" rx="0" ry="0" x="-156.765625" y="-33.890625" width="313.53125" height="67.78125"></rect><g class="label" style="" transform="translate(-149.265625, -26.390625)"><rect></rect><foreignObject width="298.53125" height="52.78125"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">PNNloc de Lupori (Faster R-CNN)<br>Tiles 256 px | Overlap 64 px | Umbral 0.20</span></div></foreignObject></g></g><g class="node default default flowchart-label" id="flowchart-J-17" data-node="true" data-id="J" transform="translate(1078.125, 603.625)"><rect class="basic label-container" style="" rx="0" ry="0" x="-154.5390625" y="-33.890625" width="309.078125" height="67.78125"></rect><g class="label" style="" transform="translate(-147.0390625, -26.390625)"><rect></rect><foreignObject width="294.078125" height="52.78125"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">PNNscore de Lupori (ConvNet Ranking)<br>Parches 64x64 px | Umbral Score &gt;= -1.0</span></div></foreignObject></g></g><g class="node default default flowchart-label" id="flowchart-K-19" data-node="true" data-id="K" transform="translate(1078.125, 721.40625)"><rect class="basic label-container" style="" rx="0" ry="0" x="-142.6953125" y="-33.890625" width="285.390625" height="67.78125"></rect><g class="label" style="" transform="translate(-135.1953125, -26.390625)"><rect></rect><foreignObject width="270.390625" height="52.78125"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">Spatial NMS por Distancia (&lt; 10 px ≈ 8.91 µm)<br>(Supresión de Duplicados por Proximidad)</span></div></foreignObject></g></g><g class="node default default flowchart-label" id="flowchart-E-7" data-node="true" data-id="E" transform="translate(215.03125, 460.84375)"><rect class="basic label-container" style="" rx="0" ry="0" x="-72.875" y="-20.6953125" width="145.75" height="41.390625"></rect><g class="label" style="" transform="translate(-65.375, -13.1953125)"><rect></rect><foreignObject width="130.75" height="26.390625"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">Canal PV546 Raw</span></div></foreignObject></g></g><g class="node default default flowchart-label" id="flowchart-F-9" data-node="true" data-id="F" transform="translate(215.03125, 603.625)"><rect class="basic label-container" style="" rx="0" ry="0" x="-180.03125" y="-33.890625" width="360.0625" height="67.78125"></rect><g class="label" style="" transform="translate(-172.53125, -26.390625)"><rect></rect><foreignObject width="345.0625" height="52.78125"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">Cellpose (cpsam_v2)<br>Raw 8-bit | Diam: 20 px | Flow: 0.80 | Prob: -1.5</span></div></foreignObject></g></g><g class="node default default flowchart-label" id="flowchart-G-11" data-node="true" data-id="G" transform="translate(215.03125, 721.40625)"><rect class="basic label-container" style="" rx="0" ry="0" x="-154.2265625" y="-33.890625" width="308.453125" height="67.78125"></rect><g class="label" style="" transform="translate(-146.7265625, -26.390625)"><rect></rect><foreignObject width="293.453125" height="52.78125"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">Máscara de Instancias Somáticas (m_pv)<br>Área somática (µm²), Diámetro</span></div></foreignObject></g></g><g class="node default default flowchart-label" id="flowchart-D-5" data-node="true" data-id="D" transform="translate(658.2109375, 460.84375)"><rect class="basic label-container" style="" rx="0" ry="0" x="-173.1484375" y="-33.890625" width="346.296875" height="67.78125"></rect><g class="label" style="" transform="translate(-165.6484375, -26.390625)"><rect></rect><foreignObject width="331.296875" height="52.78125"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">Alineación en Napari:<br>ROI Estandarizada Invariante = 0.348015 mm²</span></div></foreignObject></g></g><g class="node default default flowchart-label" id="flowchart-B-1" data-node="true" data-id="B" transform="translate(460.6484375, 163.4765625)"><rect class="basic label-container" style="" rx="0" ry="0" x="-114.078125" y="-20.6953125" width="228.15625" height="41.390625"></rect><g class="label" style="" transform="translate(-106.578125, -13.1953125)"><rect></rect><foreignObject width="213.15625" height="26.390625"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">Proyección MIP Automatizada</span></div></foreignObject></g></g><g class="node default default flowchart-label" id="flowchart-A-0" data-node="true" data-id="A" transform="translate(460.6484375, 58.890625)"><rect class="basic label-container" style="" rx="0" ry="0" x="-95.09375" y="-33.890625" width="190.1875" height="67.78125"></rect><g class="label" style="" transform="translate(-87.59375, -26.390625)"><rect></rect><foreignObject width="175.1875" height="52.78125"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">Z-stack Confocal 8-bit<br>(DAPI, PV546, WFA647)</span></div></foreignObject></g></g><g class="node default default flowchart-label" id="flowchart-C-3" data-node="true" data-id="C" transform="translate(658.2109375, 293.0625)"><rect class="basic label-container" style="" rx="0" ry="0" x="-77.9296875" y="-33.890625" width="155.859375" height="67.78125"></rect><g class="label" style="" transform="translate(-70.4296875, -26.390625)"><rect></rect><foreignObject width="140.859375" height="52.78125"><div xmlns="http://www.w3.org/1999/xhtml" style="display: inline-block; white-space: nowrap;"><span class="nodeLabel">Calibración CZI:<br>0.8913 µm/px a 10x</span></div></foreignObject></g></g></g></g></g></svg></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 13: Defensa de Tesis / FAQ -->
+    <section class="slide" id="slide-13">
+      <div class="slide-header">
+        <div class="slide-category">12. Preparación para el Jurado</div>
+        <h2 class="slide-title">Preguntas Clave y Respuestas de Defensa</h2>
+        <div class="slide-subtitle">Fundamentación técnica de las decisiones metodológicas adoptadas</div>
+      </div>
+      <div class="slide-body">
+        <div class="grid-2">
+          <div class="card">
+            <h4 style="font-size: 15px; color: var(--accent-cyan); margin-bottom: 6px;">P1: ¿Por qué no registrar contra el atlas CCFv3 como Lupori?</h4>
+            <p style="font-size: 13px;">El CCFv3 exige hemisferios intactos con orientación estereotáxica perfecta. En rebanadas de corte manual o parciales de S1, el registro no rígido genera distorsiones geométricas inaceptables. La <strong>ROI normalizada de 0.348 mm²</strong> elimina el sesgo de deformación y proporciona densidades volumétricas rigurosas e invariantes.</p>
+          </div>
+
+          <div class="card">
+            <h4 style="font-size: 15px; color: var(--accent-cyan); margin-bottom: 6px;">P2: ¿Por qué cuantificar las PNNs con un disco fijo de 12 µm en vez de una máscara celular irregular?</h4>
+            <p style="font-size: 13px;">Para garantizar una comparación metodológica sin sesgos entre PNNs PV+ y PNNs PV- (redes huecas). Si la cuantificación dependiera del contorno de una célula o de una máscara celular previa, las PNNs que envuelven neuronas PV- no tendrían máscara somática de referencia y se medirían con criterios dispares. El <strong>disco circular estandarizado de 12 µm (410.71 µm²)</strong> evalúa ambas poblaciones bajo exactamente la misma superficie y regla geométrica.</p>
+          </div>
+
+          <div class="card">
+            <h4 style="font-size: 15px; color: var(--accent-cyan); margin-bottom: 6px;">P3: ¿Por qué usar Cellpose SAM v2 en lugar del detector puntual de Lupori para PV?</h4>
+            <p style="font-size: 13px;">Lupori et al. detectaban PV como puntos (x, y) con Faster R-CNN (PVloc). En nuestro estudio necesitábamos caracterizar la <strong>morfometría real del soma (área en µm² y diámetro)</strong> para evaluar posibles cambios tróficos celulares, además de permitir una colocalización inequívoca mediante inclusión topológica en la máscara somática real.</p>
+          </div>
+
+          <div class="card">
+            <h4 style="font-size: 15px; color: var(--accent-cyan); margin-bottom: 6px;">P4: ¿Cómo se validó la precisión frente al evaluador humano?</h4>
+            <p style="font-size: 13px;">Se implementó un módulo de conteo manual por tiles en Streamlit (Página 3), validando las predicciones automáticas mediante análisis de <strong>Bland-Altman</strong> y cálculo de error medio absoluto relativo (MARE ≤ 10%), confirmando alta concordancia con el evaluador biológico.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer>
+    <div>
+      <span class="kbd">←</span> / <span class="kbd">→</span> o <span class="kbd">Espacio</span>: Navegar &nbsp;|&nbsp; 
+      <span class="kbd">F</span>: Pantalla Completa &nbsp;|&nbsp; 
+      <span class="kbd">P</span>: Imprimir / PDF
+    </div>
+    <div>
+      Desarrollado para <strong>HistoLab</strong> • Análisis Morfométrico PNN-PV 2026
+    </div>
+  </footer>
+
+  <script>
+    let currentSlide = 1;
+    const totalSlides = 13;
+
+    function updateSlide() {
+      // Update active slide class
+      for (let i = 1; i <= totalSlides; i++) {
+        const slide = document.getElementById(`slide-${i}`);
+        if (slide) {
+          if (i === currentSlide) {
+            slide.classList.add('active');
+          } else {
+            slide.classList.remove('active');
+          }
+        }
+      }
+
+      // Update counter and progress bar
+      document.getElementById('currentSlideNum').textContent = currentSlide;
+      document.getElementById('totalSlidesNum').textContent = totalSlides;
+      const progressPercent = ((currentSlide - 1) / (totalSlides - 1)) * 100;
+      document.getElementById('progressFill').style.width = `${progressPercent}%`;
+
+      // Update button states
+      document.getElementById('prevBtn').disabled = currentSlide === 1;
+      document.getElementById('nextBtn').disabled = currentSlide === totalSlides;
+    }
+
+    function nextSlide() {
+      if (currentSlide < totalSlides) {
+        currentSlide++;
+        updateSlide();
+      }
+    }
+
+    function prevSlide() {
+      if (currentSlide > 1) {
+        currentSlide--;
+        updateSlide();
+      }
+    }
+
+    function goToSlide(n) {
+      if (n >= 1 && n <= totalSlides) {
+        currentSlide = n;
+        updateSlide();
+      }
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+          console.error(err);
+        });
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        }
+      }
+    }
+
+    // Keyboard navigation
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ' || e.key === 'n') {
+        e.preventDefault();
+        nextSlide();
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'p') {
+        e.preventDefault();
+        prevSlide();
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        goToSlide(1);
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        goToSlide(totalSlides);
+      } else if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        toggleFullscreen();
+      }
+    });
+
+    // Initialize
+    updateSlide();
+  </script>
+</body>
+</html>

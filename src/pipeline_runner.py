@@ -402,18 +402,27 @@ def run_pipeline_on_file(tif_path, out_segm_dir, out_metrics_dir,
     csv_name = f"{base_name}_nuclei_metrics.csv"
     df_b.to_csv(os.path.join(out_metrics_dir, csv_name), index=False)
 
+    # Generate dedicated mask for PV+ somas/nuclei that belong to a PNN (PV+/PNN+)
+    m_pv_pnn_coloc = np.zeros_like(m_pv, dtype=np.uint16)
+    for r_item in r_batch:
+        if r_item.get('cell_type') == "PV+/PNN+":
+            pv_l = r_item.get('pv_label', -1)
+            if pv_l > 0:
+                m_pv_pnn_coloc[m_pv == pv_l] = pv_l
+
     # Save segmented Masks TIFF
     stk = np.stack([m_dapi.astype(np.uint16),
                     m_pv.astype(np.uint16),
                     m_wfa.astype(np.uint16),
                     m_ring.astype(np.uint16),
+                    m_pv_pnn_coloc.astype(np.uint16),
                     w_raw.astype(np.uint16)], axis=0)
                           
     segm_name = f"{base_name}_masks.tif"
     tiff.imwrite(os.path.join(out_segm_dir, segm_name),
                  stk, imagej=True,
                  metadata={'spacing': px_size, 'unit': 'um', 'Axes': 'CYX',
-                           'Labels': ['DAPI_Mask', 'PV_Mask', 'PNN_Mask', 'Pericellular_Ring_Mask', 'WFA_Raw']})
+                           'Labels': ['DAPI_Mask', 'PV_Mask', 'PNN_Mask', 'Pericellular_Ring_Mask', 'PV_in_PNN_Mask', 'WFA_Raw']})
 
     # Save Power Heatmap Image
     power_map_scaled = np.clip(power_map * 255.0, 0, 255).astype(np.uint8)
